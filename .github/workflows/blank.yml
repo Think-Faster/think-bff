@@ -1,0 +1,83 @@
+name: Deploy to dev Server
+
+permissions:
+  contents: write
+  
+on:
+  push:
+    branches-ignore:
+      - 'dev'
+      - 'prod'
+      - 'main'
+      - 'master'
+
+env:
+  TARGET_BRANCH: dev
+  BFF_CONTAINER: tf-bff
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge into dev branch
+        run: |
+          git fetch origin ${{ env.TARGET_BRANCH }} || true
+          git checkout ${{ env.TARGET_BRANCH }} || git checkout -b ${{ env.TARGET_BRANCH }}
+          git merge --no-ff ${{ github.ref_name }} -m "Merge ${{ github.ref_name }} into dev via GitHub Actions"
+          git push origin ${{ env.TARGET_BRANCH }}
+
+      - name: Deploy via SSH with debug
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_IP }}
+          username: ${{ secrets.DEV_USER }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          script: |
+            cd ${{ secrets.DEV_PATH }}
+            
+            # Debug: показать текущую директорию и права
+            echo "Current directory: $(pwd)"
+            echo "Current user: $(whoami)"
+            echo "Git status:"
+            git status
+            
+            # Git operations с правильным подходом
+            echo "Fetching latest changes..."
+            git fetch origin
+            
+            echo "Checking out dev branch..."
+            git checkout dev
+            
+            echo "Resetting to origin/dev..."
+            git reset --hard origin/dev
+            
+            echo "Current commit:"
+            git log -1 --oneline
+            
+            # Docker operations
+            echo "Stopping containers..."
+            cd deploy
+            
+            docker-compose down || true
+            
+            echo "Building containers..."
+            docker-compose build --no-cache
+            
+            echo "Starting containers..."
+            docker-compose up -d
+            
+            echo "Container status:"
+            docker-compose ps
+            
+            echo "Showing recent logs:"
+            docker-compose logs --tail=50
