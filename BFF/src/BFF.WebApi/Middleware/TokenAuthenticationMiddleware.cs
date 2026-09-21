@@ -197,6 +197,6 @@ public sealed class TokenAuthenticationMiddleware
     {
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync(JsonSerializer.Serialize(new ErrorResponse { Code = code, Message = message }));
+        await context.Response.WriteAsync(JsonSerializer.Serialize(new ErrorResponse { Code = code, Message = message }, JsonDefaults.CamelCase));
     }
 }

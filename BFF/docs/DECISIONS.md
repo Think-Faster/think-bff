@@ -3,6 +3,17 @@
 Ведётся по ходу разработки, согласно правилу 6 раздела 1 технического задания: при неоднозначности
 агент принимает решение сам, фиксирует его здесь и продолжает работу, не останавливаясь на уточнениях.
 
+## Тело ошибок — camelCase, как и всё остальное
+
+Middleware (`ExceptionHandlingMiddleware`, `TokenAuthenticationMiddleware`,
+`PermissionDeniedResultHandler`) пишут JSON-тело ошибки напрямую через `JsonSerializer.Serialize`, минуя
+MVC-пайплайн — а значит, и его конфиг сериализации (camelCase по умолчанию в ASP.NET Core). Без явной
+настройки они бы отдавали `{"Code": ..., "Message": ...}` (PascalCase — как в C#-классе `ErrorResponse`),
+пока все успешные ответы контроллеров — `{"code": ..., "lastName": ...}` (camelCase). Заведён общий
+`BFF.WebApi.Extensions.JsonDefaults.CamelCase` (заодно и `DictionaryKeyPolicy = CamelCase` — иначе поля
+внутри `details` у ошибок валидации остались бы `LastName` вместо `lastName`), используется во всех трёх
+местах.
+
 ## `DB_SKIP_SCHEMA_CREATE` в контуре миграций
 
 Раздел 5, шаг 4 ТЗ поручает `entrypoint.sh` создавать схему (`CREATE SCHEMA IF NOT EXISTS`) перед

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using BFF.Contracts.Common;
+using BFF.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Policy;
 
@@ -36,6 +37,6 @@ public sealed class PermissionDeniedResultHandler : IAuthorizationMiddlewareResu
 
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync(JsonSerializer.Serialize(new ErrorResponse { Code = code, Message = message }));
+        await context.Response.WriteAsync(JsonSerializer.Serialize(new ErrorResponse { Code = code, Message = message }, JsonDefaults.CamelCase));
     }
 }
