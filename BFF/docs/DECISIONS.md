@@ -3,6 +3,18 @@
 Ведётся по ходу разработки, согласно правилу 6 раздела 1 технического задания: при неоднозначности
 агент принимает решение сам, фиксирует его здесь и продолжает работу, не останавливаясь на уточнениях.
 
+## `JwtSecurityTokenHandler` переименовывает `sub` — отключили маппинг
+
+`JwtSecurityTokenHandler.ValidateToken` по умолчанию прогоняет claim'ы через
+`DefaultInboundClaimTypeMap` и переименовывает известные короткие имена (`sub`, `name`, `email` и т.д.)
+в legacy XML/SOAP URI — `sub` конкретно превращается в
+`http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier`. Из-за этого
+`principal.FindFirst("sub")` (через `AUTH_USER_ID_CLAIM`) не находил ничего, хотя в самом JWT `sub`
+присутствовал — токен от `tf-auth` даже дублирует значение под обоими именами, что и натолкнуло на
+причину. Фикс — `new JwtSecurityTokenHandler { MapInboundClaims = false }` в `JwtValidator.ValidateAsync`:
+имена claim'ов в `ClaimsPrincipal` теперь совпадают с тем, что реально в payload, без скрытого
+переименования.
+
 ## `AUTH_JWKS_URL` отдаёт PEM-ключ, а не JWKS-документ
 
 По факту (проверено запросом к реальному `tf-auth`): эндпоинт, на который указывает `AUTH_JWKS_URL`,
