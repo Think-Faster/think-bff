@@ -1,0 +1,32 @@
+services:
+  bff:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: think-bff:latest
+    # No `ports:` section on purpose — the service is only reachable from inside app-network; nginx is
+    # the sole entry point from outside (section 12.2).
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+
+networks:
+  app-network:
+    external: true
+    name: ${DOCKER_NETWORK:-app-network}

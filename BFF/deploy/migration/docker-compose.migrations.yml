@@ -1,0 +1,17 @@
+services:
+  bff-migrations:
+    build:
+      context: ../..
+      dockerfile: deploy/migration/Dockerfile.migrations
+    image: think-bff-migrations:latest
+    env_file:
+      - .env
+    networks:
+      - app-network
+    restart: "no"
+    profiles: ["migrations"]
+
+networks:
+  app-network:
+    external: true
+    name: ${DOCKER_NETWORK:-app-network}
