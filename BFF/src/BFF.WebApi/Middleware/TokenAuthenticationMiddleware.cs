@@ -22,11 +22,13 @@ public sealed class TokenAuthenticationMiddleware
 
     private readonly RequestDelegate _next;
     private readonly AuthOptions _options;
+    private readonly ILogger<TokenAuthenticationMiddleware> _logger;
 
-    public TokenAuthenticationMiddleware(RequestDelegate next, IOptions<AuthOptions> options)
+    public TokenAuthenticationMiddleware(RequestDelegate next, IOptions<AuthOptions> options, ILogger<TokenAuthenticationMiddleware> logger)
     {
         _next = next;
         _options = options.Value;
+        _logger = logger;
     }
 
     public async Task InvokeAsync(
@@ -57,7 +59,20 @@ public sealed class TokenAuthenticationMiddleware
         }
         catch (SecurityTokenExpiredException)
         {
-            var refreshed = await TryRefreshAsync(context, jwtValidator, authServiceClient, ct);
+            ClaimsPrincipal? refreshed;
+            try
+            {
+                refreshed = await TryRefreshAsync(context, jwtValidator, authServiceClient, ct);
+            }
+            catch (JwksUnavailableException ex)
+            {
+                // Re-validating the refreshed token hit the same "no usable signing key" problem — same
+                // 503 treatment as the outer catch below, just from inside this nested try.
+                _logger.LogError(ex, "Cannot validate refreshed token: signing key unavailable from {JwksUrl}", _options.JwksUrl);
+                await WriteErrorAsync(context, StatusCodes.Status503ServiceUnavailable, "auth_service_unavailable", "Cannot validate tokens right now.");
+                return;
+            }
+
             if (refreshed is null)
             {
                 await WriteErrorAsync(context, StatusCodes.Status401Unauthorized, "token_refresh_failed", "Token refresh failed.");
@@ -65,6 +80,14 @@ public sealed class TokenAuthenticationMiddleware
             }
 
             principal = refreshed;
+        }
+        catch (JwksUnavailableException ex)
+        {
+            // Not the caller's fault: without a usable signing key, no token can be validated right now,
+            // regardless of whether it's actually valid — that's a 503 on us, not a 401 on them.
+            _logger.LogError(ex, "Cannot validate tokens: signing key unavailable from {JwksUrl}", _options.JwksUrl);
+            await WriteErrorAsync(context, StatusCodes.Status503ServiceUnavailable, "auth_service_unavailable", "Cannot validate tokens right now.");
+            return;
         }
         catch (SecurityTokenException)
         {
