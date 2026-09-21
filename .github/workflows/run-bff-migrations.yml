@@ -1,0 +1,63 @@
+name: Run BFF Migrations (dev, manual)
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Branch to check out on the server before running migrations'
+        required: false
+        default: 'dev'
+
+env:
+  MIGRATIONS_COMPOSE_FILE: docker-compose.migrations.yml
+  MIGRATIONS_SERVICE: bff-migrations
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run migrations container via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_IP }}
+          username: ${{ secrets.DEV_USER }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          script: |
+            set -e
+            cd ${{ secrets.DEV_PATH }}
+
+            # Debug: показать текущую директорию и права
+            echo "Current directory: $(pwd)"
+            echo "Current user: $(whoami)"
+
+            # Git operations
+            echo "Fetching latest changes..."
+            git fetch origin
+
+            echo "Checking out ${{ github.event.inputs.target_branch }} branch..."
+            git checkout ${{ github.event.inputs.target_branch }}
+            git reset --hard origin/${{ github.event.inputs.target_branch }}
+
+            echo "Current commit:"
+            git log -1 --oneline
+
+            cd BFF/deploy/migration
+
+            if [ ! -f .env ]; then
+              echo "deploy/migration/.env not found on server — create it from .env.example first (it is gitignored, never committed)." >&2
+              exit 1
+            fi
+
+            # Docker operations
+            echo "Building migrations image..."
+            docker compose -f ${{ env.MIGRATIONS_COMPOSE_FILE }} --profile migrations build
+
+            echo "Running migrations container..."
+            docker compose -f ${{ env.MIGRATIONS_COMPOSE_FILE }} --profile migrations up \
+              --abort-on-container-exit --exit-code-from ${{ env.MIGRATIONS_SERVICE }}
+
+            echo "Cleaning up the (one-shot, stopped) migrations container..."
+            docker compose -f ${{ env.MIGRATIONS_COMPOSE_FILE }} --profile migrations down

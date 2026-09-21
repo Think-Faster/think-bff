@@ -1,0 +1,20 @@
+services:
+  bff-migrations:
+    build:
+      context: ../..
+      dockerfile: deploy/migration/Dockerfile.migrations
+    image: bff-migrations:latest
+    env_file:
+      - .env
+    networks:
+      - app-network
+      - postgree_app-network
+    restart: "no"
+    profiles: ["migrations"]
+
+networks:
+  app-network:
+    external: true
+    name: ${DOCKER_NETWORK:-app-network}
+  postgree_app-network:
+    external: true

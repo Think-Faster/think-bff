@@ -1,0 +1,14 @@
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+**/*.user
+**/.env
+deploy/.env
+deploy/migration/.env
+docs/
+scripts/
+README.md
+.git/
+.gitignore
+.editorconfig
