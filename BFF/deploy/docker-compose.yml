@@ -4,7 +4,7 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     image: tf-bff:latest
-    container-name: tf-bff
+    container_name: tf-bff
     # No `ports:` section on purpose — the service is only reachable from inside app-network; nginx is
     # the sole entry point from outside (section 12.2).
     env_file:
