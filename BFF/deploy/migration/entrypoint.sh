@@ -12,6 +12,26 @@ set -eu
 : "${DB_MIGRATION_PASSWORD:?DB_MIGRATION_PASSWORD is required}"
 : "${DB_SKIP_SCHEMA_CREATE:=false}"
 
+echo "--- bff-migrations: input parameters (secrets omitted) ---"
+echo "DB_HOST               = ${DB_HOST}"
+echo "DB_PORT               = ${DB_PORT}"
+echo "DB_NAME               = ${DB_NAME}"
+echo "DB_SCHEMA             = ${DB_SCHEMA}"
+echo "DB_MIGRATION_USER     = ${DB_MIGRATION_USER}"
+echo "DB_MIGRATION_PASSWORD = [${#DB_MIGRATION_PASSWORD} chars, hidden]"
+echo "DB_SKIP_SCHEMA_CREATE = ${DB_SKIP_SCHEMA_CREATE}"
+echo "-----------------------------------------------------------"
+
+echo "Checking that ${DB_MIGRATION_USER} can connect to ${DB_HOST}:${DB_PORT}/${DB_NAME}..."
+if ! PGPASSWORD="${DB_MIGRATION_PASSWORD}" psql \
+  --host "${DB_HOST}" --port "${DB_PORT}" --dbname "${DB_NAME}" --username "${DB_MIGRATION_USER}" \
+  --set ON_ERROR_STOP=on --tuples-only --command "SELECT 1;" >/dev/null; then
+  echo "Cannot even CONNECT to database \"${DB_NAME}\" as \"${DB_MIGRATION_USER}\"." >&2
+  echo "This is broader than missing CREATE — check pg_hba.conf / GRANT CONNECT ON DATABASE \"${DB_NAME}\" TO ${DB_MIGRATION_USER}, and that the role/password are correct." >&2
+  exit 1
+fi
+echo "Connection OK."
+
 # CREATE SCHEMA IF NOT EXISTS still requires CREATE on the database to even attempt the statement — the
 # permission check runs before the existence check, so IF NOT EXISTS does not make this a no-op for a
 # user without that right. When the schema is already provisioned by infra ahead of time (and
