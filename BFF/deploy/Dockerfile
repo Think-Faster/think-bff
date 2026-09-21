@@ -19,8 +19,8 @@ RUN dotnet publish src/BFF.WebApi/BFF.WebApi.csproj -c Release -o /app --no-rest
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine AS runtime
 WORKDIR /app
 
-RUN addgroup -S app && adduser -S app -G app
-USER app
+# RUN addgroup -S app && adduser -S app -G app
+# USER app
 
 COPY --from=build /app ./
 
