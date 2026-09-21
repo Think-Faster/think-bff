@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace BFF.WebApi.Controllers;
 
 [ApiController]
-[Route("api/groups")]
+[Route("groups")]
 public sealed class GroupsController : ControllerBase
 {
     private readonly IGroupService _groupService;

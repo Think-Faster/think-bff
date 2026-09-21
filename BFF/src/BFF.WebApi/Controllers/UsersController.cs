@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace BFF.WebApi.Controllers;
 
 [ApiController]
-[Route("api/users")]
+[Route("users")]
 public sealed class UsersController : ControllerBase
 {
     private readonly IUserService _userService;

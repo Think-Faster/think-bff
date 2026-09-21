@@ -11,7 +11,6 @@ using Microsoft.AspNetCore.Mvc;
 namespace BFF.WebApi.Controllers;
 
 [ApiController]
-[Route("api")]
 [Authorize]
 public sealed class PermissionsController : ControllerBase
 {
