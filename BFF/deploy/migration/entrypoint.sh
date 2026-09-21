@@ -10,12 +10,22 @@ set -eu
 : "${DB_SCHEMA:?DB_SCHEMA is required}"
 : "${DB_MIGRATION_USER:?DB_MIGRATION_USER is required}"
 : "${DB_MIGRATION_PASSWORD:?DB_MIGRATION_PASSWORD is required}"
+: "${DB_SKIP_SCHEMA_CREATE:=false}"
 
-echo "Ensuring schema \"${DB_SCHEMA}\" exists on ${DB_HOST}:${DB_PORT}/${DB_NAME}..."
-PGPASSWORD="${DB_MIGRATION_PASSWORD}" psql \
-  --host "${DB_HOST}" --port "${DB_PORT}" --dbname "${DB_NAME}" --username "${DB_MIGRATION_USER}" \
-  --set ON_ERROR_STOP=on \
-  --command "CREATE SCHEMA IF NOT EXISTS \"${DB_SCHEMA}\";"
+# CREATE SCHEMA IF NOT EXISTS still requires CREATE on the database to even attempt the statement — the
+# permission check runs before the existence check, so IF NOT EXISTS does not make this a no-op for a
+# user without that right. When the schema is already provisioned by infra ahead of time (and
+# DB_MIGRATION_USER intentionally has no CREATE on the database, only rights inside the existing schema),
+# set DB_SKIP_SCHEMA_CREATE=true to skip straight to applying migrations.
+if [ "${DB_SKIP_SCHEMA_CREATE}" = "true" ]; then
+  echo "DB_SKIP_SCHEMA_CREATE=true — assuming schema \"${DB_SCHEMA}\" already exists, skipping creation."
+else
+  echo "Ensuring schema \"${DB_SCHEMA}\" exists on ${DB_HOST}:${DB_PORT}/${DB_NAME}..."
+  PGPASSWORD="${DB_MIGRATION_PASSWORD}" psql \
+    --host "${DB_HOST}" --port "${DB_PORT}" --dbname "${DB_NAME}" --username "${DB_MIGRATION_USER}" \
+    --set ON_ERROR_STOP=on \
+    --command "CREATE SCHEMA IF NOT EXISTS \"${DB_SCHEMA}\";"
+fi
 
 echo "Applying migrations..."
 export DB_CONNECTION_STRING="Host=${DB_HOST};Port=${DB_PORT};Database=${DB_NAME};Username=${DB_MIGRATION_USER};Password=${DB_MIGRATION_PASSWORD};Search Path=${DB_SCHEMA}"

@@ -83,6 +83,11 @@ docker compose -f deploy/migration/docker-compose.migrations.yml --profile migra
 право `CREATE` на базу; рабочая учётка приложения (`DB_USER`/`DB_PASSWORD` в `deploy/.env`) такого права
 иметь не должна.
 
+Если схему создаёт инфраструктура заранее, а `DB_MIGRATION_USER` намеренно без `CREATE` на базу — поставь
+`DB_SKIP_SCHEMA_CREATE=true` в `deploy/migration/.env`: `CREATE SCHEMA IF NOT EXISTS` всё равно требует
+`CREATE` на базу для самой попытки выполнить команду (проверка прав идёт раньше проверки «уже существует
+или нет»), так что без этого флага шаг упадёт `permission denied`, даже если схема уже на месте.
+
 ## Начальные данные
 
 `scripts/001_seed_admins_group.sql` создаёт системную группу `admins`, базовые ресурсы
