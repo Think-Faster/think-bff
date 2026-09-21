@@ -13,12 +13,12 @@ services:
     networks:
       - app-network
       - postgree_app-network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://tf-bff:8080/health/ready"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
+    # healthcheck:
+    #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://tf-bff:8080/health/ready"]
+    #   interval: 30s
+    #   timeout: 5s
+    #   retries: 3
+    #   start_period: 20s
     deploy:
       resources:
         limits:
