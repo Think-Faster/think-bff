@@ -3,7 +3,7 @@ services:
     build:
       context: ../..
       dockerfile: deploy/migration/Dockerfile.migrations
-    image: think-bff-migrations:latest
+    image: bff-migrations:latest
     env_file:
       - .env
     networks:
