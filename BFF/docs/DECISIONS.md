@@ -3,6 +3,18 @@
 Ведётся по ходу разработки, согласно правилу 6 раздела 1 технического задания: при неоднозначности
 агент принимает решение сам, фиксирует его здесь и продолжает работу, не останавливаясь на уточнениях.
 
+## `DB_SKIP_SCHEMA_CREATE` в контуре миграций
+
+Раздел 5, шаг 4 ТЗ поручает `entrypoint.sh` создавать схему (`CREATE SCHEMA IF NOT EXISTS`) перед
+`dotnet ef database update`, предполагая, что `DB_MIGRATION_USER` имеет `CREATE` на базу. На практике
+инфраструктура может создавать схемы заранее сама, а миграционной учётке сознательно не давать `CREATE`
+на базу (только права внутри уже существующей схемы) — и тогда `CREATE SCHEMA IF NOT EXISTS` всё равно
+падает `permission denied`, потому что в Postgres проверка прав на выполнение самой команды идёт раньше
+проверки «уже существует или нет»; `IF NOT EXISTS` в этом случае не спасает. Добавлена переменная
+`DB_SKIP_SCHEMA_CREATE` (по умолчанию `false`) — при `true` `entrypoint.sh` пропускает шаг создания схемы
+и сразу переходит к `dotnet ef database update`. См. `deploy/migration/entrypoint.sh` и
+`deploy/migration/.env.example`.
+
 ## `JwtSecurityTokenHandler` переименовывает `sub` — отключили маппинг
 
 `JwtSecurityTokenHandler.ValidateToken` по умолчанию прогоняет claim'ы через
