@@ -30,7 +30,14 @@ public sealed class JwtValidator
     /// couldn't be obtained, or another <see cref="SecurityTokenException"/> for anything else.</summary>
     public async Task<ClaimsPrincipal> ValidateAsync(string token, CancellationToken ct)
     {
-        var handler = new JwtSecurityTokenHandler();
+        var handler = new JwtSecurityTokenHandler
+        {
+            // Without this, JwtSecurityTokenHandler silently renames well-known short claim types (most
+            // notably "sub") to legacy XML/SOAP URIs via its DefaultInboundClaimTypeMap — so the resulting
+            // ClaimsPrincipal never has a claim literally named "sub", breaking AUTH_USER_ID_CLAIM lookups
+            // even though the raw JWT payload clearly has one. Keep claim names exactly as issued.
+            MapInboundClaims = false,
+        };
         var parameters = BuildValidationParameters(await GetSigningKeysAsync(forceRefresh: false, ct));
 
         try
