@@ -35,7 +35,8 @@ public sealed class TokenAuthenticationMiddleware
         HttpContext context,
         JwtValidator jwtValidator,
         IAuthServiceClient authServiceClient,
-        IUserService userService)
+        IUserService userService,
+        IPresenceTracker presenceTracker)
     {
         if (IsSkipped(context.Request.Path))
         {
@@ -117,6 +118,18 @@ public sealed class TokenAuthenticationMiddleware
 
         context.User = principal;
         context.SetCurrentUser(new CurrentUser(user.Id, user.AuthUserId, user.FullName));
+
+        try
+        {
+            // Presence per section 6.4 of the domain doc: no sessions/tokens stored, just "a request with
+            // a valid token came in". Throttled internally — most calls never touch the database. Never
+            // lets a presence-tracking failure fail the actual request.
+            await presenceTracker.TrackAsync(user.Id, $"{context.Request.Method} {context.Request.Path}", ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Presence tracking failed for user {UserId}", user.Id);
+        }
 
         await _next(context);
     }

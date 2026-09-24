@@ -21,10 +21,17 @@ jobs:
     steps:
       - name: Run migrations container via SSH
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
         with:
           host: ${{ secrets.DEV_IP }}
           username: ${{ secrets.DEV_USER }}
           key: ${{ secrets.DEV_SSH_KEY }}
+          # workflow_dispatch inputs are attacker-influenceable text, so they must never be interpolated
+          # directly into the script body (GitHub's own linter flags this as a script-injection risk — a
+          # branch name like `x; rm -rf /` would execute as shell). Pass it through `envs` instead and
+          # reference it as a shell variable, which treats it as pure data.
+          envs: TARGET_BRANCH
           script: |
             set -e
             cd ${{ secrets.DEV_PATH }}
@@ -37,9 +44,9 @@ jobs:
             echo "Fetching latest changes..."
             git fetch origin
 
-            echo "Checking out ${{ github.event.inputs.target_branch }} branch..."
-            git checkout ${{ github.event.inputs.target_branch }}
-            git reset --hard origin/${{ github.event.inputs.target_branch }}
+            echo "Checking out ${TARGET_BRANCH} branch..."
+            git checkout "${TARGET_BRANCH}"
+            git reset --hard "origin/${TARGET_BRANCH}"
 
             echo "Current commit:"
             git log -1 --oneline

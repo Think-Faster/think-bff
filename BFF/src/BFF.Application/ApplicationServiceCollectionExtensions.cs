@@ -39,6 +39,27 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IPermissionService, PermissionService>();
         services.AddScoped<IHealthService, HealthService>();
 
+        // D1 — topology
+        services.AddScoped<IObjectService, ObjectService>();
+        services.AddScoped<ISensorService, SensorService>();
+
+        // D3 — predictions
+        services.AddScoped<IPredictionService, PredictionService>();
+
+        // D4 — tasks and works
+        services.AddScoped<IWorkTaskService, WorkTaskService>();
+        services.AddScoped<IIncidentService, IncidentService>();
+
+        // D6 — additions
+        services.AddScoped<IScheduleService, ScheduleService>();
+        services.AddScoped<IAssignedObjectService, AssignedObjectService>();
+        services.AddScoped<IEngineerService, EngineerService>();
+        services.Configure<PresenceOptions>(configuration.GetSection(PresenceOptions.SectionName));
+        services.AddScoped<IPresenceTracker, PresenceTracker>();
+
+        // D8 — admin/model settings
+        services.AddScoped<IModelSettingsService, ModelSettingsService>();
+
         services.AddValidatorsFromAssemblyContaining(typeof(ApplicationServiceCollectionExtensions));
 
         return services;

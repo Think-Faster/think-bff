@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using BFF.Application;
 using BFF.WebApi.Extensions;
 using BFF.WebApi.Middleware;
@@ -25,7 +27,11 @@ builder.Services.AddBffAuthentication(builder.Configuration);
 builder.Services.AddBffAuthorization();
 builder.Services.AddBffCors(builder.Configuration);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(options =>
+    // New domain entities (D1/D3/D4/D6/D8) expose their enums directly on DTOs instead of hand-rolled
+    // string conversion (as PrincipalType/MemberType still use, kept for backward compatibility) —
+    // camelCase to match every other property.
+    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
