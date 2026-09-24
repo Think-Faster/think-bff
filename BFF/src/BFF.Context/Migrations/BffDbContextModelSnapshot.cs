@@ -72,6 +72,174 @@ namespace BFF.Context.Migrations
                         });
                 });
 
+            modelBuilder.Entity("BFF.Models.Entities.AssignedObject", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<int>("ObjectId")
+                        .HasColumnType("integer")
+                        .HasColumnName("object_id");
+
+                    b.Property<DateTimeOffset>("AssignedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("assigned_at");
+
+                    b.Property<Guid>("AssignedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assigned_by");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text")
+                        .HasColumnName("note");
+
+                    b.HasKey("UserId", "ObjectId")
+                        .HasName("pk_assigned_objects");
+
+                    b.HasIndex("ObjectId")
+                        .HasDatabaseName("ix_assigned_objects_object_id");
+
+                    b.ToTable("assigned_objects", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.Brigade", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_brigades");
+
+                    b.ToTable("brigades", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.Coefficient", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("text")
+                        .HasColumnName("reason");
+
+                    b.Property<double?>("RejectK")
+                        .HasColumnType("double precision")
+                        .HasColumnName("reject_k");
+
+                    b.Property<double>("Share")
+                        .HasColumnType("double precision")
+                        .HasColumnName("share");
+
+                    b.Property<short>("Type")
+                        .HasColumnType("smallint")
+                        .HasColumnName("type");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_coefficients");
+
+                    b.HasIndex("Type", "Version")
+                        .IsUnique()
+                        .HasDatabaseName("ux_coefficients_type_version");
+
+                    b.ToTable("coefficients", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.EngineerProfile", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid?>("BrigadeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("brigade_id");
+
+                    b.Property<string>("Phone")
+                        .HasColumnType("text")
+                        .HasColumnName("phone");
+
+                    b.Property<string[]>("Specialization")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("specialization");
+
+                    b.Property<short>("Status")
+                        .HasColumnType("smallint")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Telegram")
+                        .HasColumnType("text")
+                        .HasColumnName("telegram");
+
+                    b.HasKey("UserId")
+                        .HasName("pk_engineer_profiles");
+
+                    b.HasIndex("BrigadeId");
+
+                    b.ToTable("engineer_profiles", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.FactAlert", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("AnnouncedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("announced_at");
+
+                    b.Property<int>("ObjectId")
+                        .HasColumnType("integer")
+                        .HasColumnName("object_id");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<int[]>("TriggerSensorIds")
+                        .IsRequired()
+                        .HasColumnType("integer[]")
+                        .HasColumnName("trigger_sensor_ids");
+
+                    b.Property<short>("Type")
+                        .HasColumnType("smallint")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_fact_alerts");
+
+                    b.HasIndex("ObjectId", "Type")
+                        .HasDatabaseName("ix_fact_alerts_object_type");
+
+                    b.ToTable("fact_alerts", (string)null);
+                });
+
             modelBuilder.Entity("BFF.Models.Entities.Group", b =>
                 {
                     b.Property<Guid>("Id")
@@ -169,6 +337,481 @@ namespace BFF.Context.Migrations
                         });
                 });
 
+            modelBuilder.Entity("BFF.Models.Entities.IgnoredRange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("DateFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("date_from");
+
+                    b.Property<DateOnly>("DateTo")
+                        .HasColumnType("date")
+                        .HasColumnName("date_to");
+
+                    b.Property<int?>("ObjectId")
+                        .HasColumnType("integer")
+                        .HasColumnName("object_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("reason");
+
+                    b.Property<short>("Scope")
+                        .HasColumnType("smallint")
+                        .HasColumnName("scope");
+
+                    b.Property<int?>("SensorId")
+                        .HasColumnType("integer")
+                        .HasColumnName("sensor_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_ignored_ranges");
+
+                    b.HasIndex("Scope")
+                        .HasDatabaseName("ix_ignored_ranges_scope");
+
+                    b.ToTable("ignored_ranges", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.Incident", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("confirmed_at");
+
+                    b.Property<Guid?>("ConfirmedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("confirmed_by");
+
+                    b.Property<int>("ObjectId")
+                        .HasColumnType("integer")
+                        .HasColumnName("object_id");
+
+                    b.Property<string>("Outcome")
+                        .HasColumnType("text")
+                        .HasColumnName("outcome");
+
+                    b.Property<Guid?>("PredictionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("prediction_id");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<Guid?>("TaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("task_id");
+
+                    b.Property<short>("Type")
+                        .HasColumnType("smallint")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_incidents");
+
+                    b.HasIndex("ObjectId")
+                        .HasDatabaseName("ix_incidents_object_id");
+
+                    b.ToTable("incidents", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.MapLayer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("GeoJson")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("geojson");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("kind");
+
+                    b.Property<short>("Level")
+                        .HasColumnType("smallint")
+                        .HasColumnName("level");
+
+                    b.Property<int?>("ObjectId")
+                        .HasColumnType("integer")
+                        .HasColumnName("object_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_map_layers");
+
+                    b.HasIndex("ObjectId", "Level")
+                        .HasDatabaseName("ix_map_layers_object_level");
+
+                    b.ToTable("map_layers", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.ModelVersion", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsDefault")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_default");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset?>("SwitchedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("switched_at");
+
+                    b.Property<Guid?>("SwitchedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("switched_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_model_versions");
+
+                    b.ToTable("model_versions", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.MonitoringObject", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Address")
+                        .HasColumnType("text")
+                        .HasColumnName("address");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("GeometryGeoJson")
+                        .HasColumnType("text")
+                        .HasColumnName("geometry_geojson");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("kind");
+
+                    b.Property<short>("Level")
+                        .HasColumnType("smallint")
+                        .HasColumnName("level");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<int?>("ParentId")
+                        .HasColumnType("integer")
+                        .HasColumnName("parent_id");
+
+                    b.Property<short>("Status")
+                        .HasColumnType("smallint")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("StatusAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("status_at");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_objects");
+
+                    b.HasIndex("ParentId")
+                        .HasDatabaseName("ix_objects_parent_id");
+
+                    b.ToTable("objects", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.Picket", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("GeometryGeoJson")
+                        .HasColumnType("text")
+                        .HasColumnName("geometry_geojson");
+
+                    b.Property<int>("ObjectId")
+                        .HasColumnType("integer")
+                        .HasColumnName("object_id");
+
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("integer")
+                        .HasColumnName("ordinal");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_pickets");
+
+                    b.HasIndex("ObjectId", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("ux_pickets_object_code");
+
+                    b.ToTable("pickets", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.Prediction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Alarm")
+                        .HasColumnType("boolean")
+                        .HasColumnName("alarm");
+
+                    b.Property<string>("Classification")
+                        .HasColumnType("text")
+                        .HasColumnName("classification");
+
+                    b.Property<double>("Confidence")
+                        .HasColumnType("double precision")
+                        .HasColumnName("confidence");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<short>("HorizonHours")
+                        .HasColumnType("smallint")
+                        .HasColumnName("horizon_hours");
+
+                    b.Property<DateTimeOffset>("HourEnd")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("hour_end");
+
+                    b.Property<string>("ModelVersionId")
+                        .HasColumnType("text")
+                        .HasColumnName("model_version_id");
+
+                    b.Property<string>("MutedReason")
+                        .HasColumnType("text")
+                        .HasColumnName("muted_reason");
+
+                    b.Property<int>("ObjectId")
+                        .HasColumnType("integer")
+                        .HasColumnName("object_id");
+
+                    b.Property<double>("Probability")
+                        .HasColumnType("double precision")
+                        .HasColumnName("probability");
+
+                    b.Property<string>("Recommendation")
+                        .HasColumnType("text")
+                        .HasColumnName("recommendation");
+
+                    b.Property<double>("Score")
+                        .HasColumnType("double precision")
+                        .HasColumnName("score");
+
+                    b.Property<int>("SinceHours")
+                        .HasColumnType("integer")
+                        .HasColumnName("since_hours");
+
+                    b.Property<short>("Status")
+                        .HasColumnType("smallint")
+                        .HasColumnName("status");
+
+                    b.Property<double>("Threshold")
+                        .HasColumnType("double precision")
+                        .HasColumnName("threshold");
+
+                    b.Property<string>("Topic")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("topic");
+
+                    b.Property<short>("Type")
+                        .HasColumnType("smallint")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_predictions");
+
+                    b.HasIndex("ObjectId", "Status")
+                        .HasDatabaseName("ix_predictions_object_status");
+
+                    b.HasIndex("ObjectId", "Type", "HourEnd", "ModelVersionId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_predictions_dedup");
+
+                    b.ToTable("predictions", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.PredictionDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<short>("Action")
+                        .HasColumnType("smallint")
+                        .HasColumnName("action");
+
+                    b.Property<string>("Comment")
+                        .HasColumnType("text")
+                        .HasColumnName("comment");
+
+                    b.Property<DateTimeOffset>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<Guid>("PredictionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("prediction_id");
+
+                    b.Property<string>("ReasonCode")
+                        .HasColumnType("text")
+                        .HasColumnName("reason_code");
+
+                    b.Property<Guid?>("TaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("task_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_prediction_decisions");
+
+                    b.HasIndex("PredictionId")
+                        .HasDatabaseName("ix_prediction_decisions_prediction_id");
+
+                    b.ToTable("prediction_decisions", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.PredictionEvidence", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<long?>("PicketId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("picket_id");
+
+                    b.Property<Guid>("PredictionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("prediction_id");
+
+                    b.Property<int>("SensorId")
+                        .HasColumnType("integer")
+                        .HasColumnName("sensor_id");
+
+                    b.Property<DateTimeOffset>("Ts")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ts");
+
+                    b.Property<double?>("Value")
+                        .HasColumnType("double precision")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id")
+                        .HasName("pk_prediction_evidence");
+
+                    b.HasIndex("PredictionId")
+                        .HasDatabaseName("ix_prediction_evidence_prediction_id");
+
+                    b.ToTable("prediction_evidence", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.PredictionFactor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Direction")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("direction");
+
+                    b.Property<string>("Feature")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("feature");
+
+                    b.Property<Guid>("PredictionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("prediction_id");
+
+                    b.Property<double>("Value")
+                        .HasColumnType("double precision")
+                        .HasColumnName("value");
+
+                    b.Property<double>("Weight")
+                        .HasColumnType("double precision")
+                        .HasColumnName("weight");
+
+                    b.HasKey("Id")
+                        .HasName("pk_prediction_factors");
+
+                    b.HasIndex("PredictionId")
+                        .HasDatabaseName("ix_prediction_factors_prediction_id");
+
+                    b.ToTable("prediction_factors", (string)null);
+                });
+
             modelBuilder.Entity("BFF.Models.Entities.RbacVersion", b =>
                 {
                     b.Property<int>("Id")
@@ -215,6 +858,334 @@ namespace BFF.Context.Migrations
                         .HasDatabaseName("ux_resources_code");
 
                     b.ToTable("resources", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.RetrainJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<string>("LogRef")
+                        .HasColumnType("text")
+                        .HasColumnName("log_ref");
+
+                    b.Property<string>("ParamsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("params");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<Guid>("RequestedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by");
+
+                    b.Property<string>("ResultModelVersionId")
+                        .HasColumnType("text")
+                        .HasColumnName("result_model_version_id");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_retrain_jobs");
+
+                    b.ToTable("retrain_jobs", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.ScheduleEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("ChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("changed_at");
+
+                    b.Property<Guid>("ChangedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("changed_by");
+
+                    b.Property<DateOnly>("DateFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("date_from");
+
+                    b.Property<DateOnly>("DateTo")
+                        .HasColumnType("date")
+                        .HasColumnName("date_to");
+
+                    b.Property<string>("Source")
+                        .HasColumnType("text")
+                        .HasColumnName("source");
+
+                    b.Property<short>("Status")
+                        .HasColumnType("smallint")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_schedule_entries");
+
+                    b.HasIndex("UserId", "DateFrom", "DateTo")
+                        .HasDatabaseName("ix_schedule_entries_user_range");
+
+                    b.ToTable("schedule_entries", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.Sensor", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<int>("ObjectId")
+                        .HasColumnType("integer")
+                        .HasColumnName("object_id");
+
+                    b.Property<long?>("PicketId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("picket_id");
+
+                    b.Property<string>("SType")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("stype");
+
+                    b.Property<string>("System")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("system");
+
+                    b.Property<string>("Tag")
+                        .HasColumnType("text")
+                        .HasColumnName("tag");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_sensors");
+
+                    b.HasIndex("ObjectId")
+                        .HasDatabaseName("ix_sensors_object_id");
+
+                    b.HasIndex("PicketId")
+                        .HasDatabaseName("ix_sensors_picket_id");
+
+                    b.ToTable("sensors", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.SensorLink", b =>
+                {
+                    b.Property<int>("FromSensorId")
+                        .HasColumnType("integer")
+                        .HasColumnName("from_sensor_id");
+
+                    b.Property<int>("ToSensorId")
+                        .HasColumnType("integer")
+                        .HasColumnName("to_sensor_id");
+
+                    b.Property<string>("Kind")
+                        .HasColumnType("text")
+                        .HasColumnName("kind");
+
+                    b.HasKey("FromSensorId", "ToSensorId", "Kind")
+                        .HasName("pk_sensor_links");
+
+                    b.ToTable("sensor_links", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.TaskAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("AssignedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("assigned_at");
+
+                    b.Property<Guid>("AssignedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assigned_by");
+
+                    b.Property<string>("Comment")
+                        .HasColumnType("text")
+                        .HasColumnName("comment");
+
+                    b.Property<Guid>("EngineerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("engineer_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("task_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_task_assignments");
+
+                    b.HasIndex("EngineerId")
+                        .HasDatabaseName("ix_task_assignments_engineer_id");
+
+                    b.HasIndex("TaskId")
+                        .HasDatabaseName("ix_task_assignments_task_id");
+
+                    b.ToTable("task_assignments", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.TaskPrediction", b =>
+                {
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("task_id");
+
+                    b.Property<Guid>("PredictionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("prediction_id");
+
+                    b.Property<DateTimeOffset>("AttachedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("attached_at");
+
+                    b.Property<Guid>("AttachedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("attached_by");
+
+                    b.Property<DateTimeOffset?>("DetachedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("detached_at");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_primary");
+
+                    b.HasKey("TaskId", "PredictionId")
+                        .HasName("pk_task_predictions");
+
+                    b.HasIndex("PredictionId");
+
+                    b.ToTable("task_predictions", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.TaskReport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ActualState")
+                        .HasColumnType("text")
+                        .HasColumnName("actual_state");
+
+                    b.Property<string>("Comment")
+                        .HasColumnType("text")
+                        .HasColumnName("comment");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("EngineerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("engineer_id");
+
+                    b.Property<string>("ResultCode")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("result_code");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("task_id");
+
+                    b.Property<string>("WorksDone")
+                        .HasColumnType("text")
+                        .HasColumnName("works_done");
+
+                    b.HasKey("Id")
+                        .HasName("pk_task_reports");
+
+                    b.HasIndex("TaskId")
+                        .HasDatabaseName("ix_task_reports_task_id");
+
+                    b.ToTable("task_reports", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.TaskReturn", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Comment")
+                        .HasColumnType("text")
+                        .HasColumnName("comment");
+
+                    b.Property<DateTimeOffset>("ReturnedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("returned_at");
+
+                    b.Property<Guid>("ReturnedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("returned_by");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("target_type");
+
+                    b.Property<Guid?>("TargetUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_user_id");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("task_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_task_returns");
+
+                    b.HasIndex("TaskId")
+                        .HasDatabaseName("ix_task_returns_task_id");
+
+                    b.ToTable("task_returns", (string)null);
                 });
 
             modelBuilder.Entity("BFF.Models.Entities.User", b =>
@@ -266,6 +1237,123 @@ namespace BFF.Context.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("BFF.Models.Entities.UserActivity", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("LastAction")
+                        .HasColumnType("text")
+                        .HasColumnName("last_action");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at");
+
+                    b.HasKey("UserId")
+                        .HasName("pk_user_activity");
+
+                    b.ToTable("user_activity", (string)null);
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.WorkTask", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AssignedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("assigned_at");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closed_at");
+
+                    b.Property<string>("Comment")
+                        .HasColumnType("text")
+                        .HasColumnName("comment");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<Guid?>("DispatcherId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("dispatcher_id");
+
+                    b.Property<string>("FaultClassification")
+                        .HasColumnType("text")
+                        .HasColumnName("fault_classification");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("number");
+
+                    b.Property<int>("ObjectId")
+                        .HasColumnType("integer")
+                        .HasColumnName("object_id");
+
+                    b.Property<long?>("PicketId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("picket_id");
+
+                    b.Property<short>("Priority")
+                        .HasColumnType("smallint")
+                        .HasColumnName("priority");
+
+                    b.Property<int[]>("SensorIds")
+                        .IsRequired()
+                        .HasColumnType("integer[]")
+                        .HasColumnName("sensor_ids");
+
+                    b.Property<short>("SourceType")
+                        .HasColumnType("smallint")
+                        .HasColumnName("source_type");
+
+                    b.Property<short>("Status")
+                        .HasColumnType("smallint")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset?>("TakenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("taken_at");
+
+                    b.Property<string>("Topic")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("topic");
+
+                    b.Property<string>("WorkType")
+                        .HasColumnType("text")
+                        .HasColumnName("work_type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_tasks");
+
+                    b.HasIndex("DispatcherId")
+                        .HasDatabaseName("ix_tasks_dispatcher_id");
+
+                    b.HasIndex("Number")
+                        .IsUnique()
+                        .HasDatabaseName("ux_tasks_number");
+
+                    b.HasIndex("ObjectId", "Status")
+                        .HasDatabaseName("ix_tasks_object_status");
+
+                    b.ToTable("tasks", (string)null);
+                });
+
             modelBuilder.Entity("BFF.Models.Entities.AccessGrant", b =>
                 {
                     b.HasOne("BFF.Models.Entities.Resource", "Resource")
@@ -276,6 +1364,15 @@ namespace BFF.Context.Migrations
                         .HasConstraintName("fk_access_grants_resources");
 
                     b.Navigation("Resource");
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.EngineerProfile", b =>
+                {
+                    b.HasOne("BFF.Models.Entities.Brigade", null)
+                        .WithMany()
+                        .HasForeignKey("BrigadeId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_engineer_profiles_brigades");
                 });
 
             modelBuilder.Entity("BFF.Models.Entities.GroupClosure", b =>
@@ -303,6 +1400,90 @@ namespace BFF.Context.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_group_members_groups");
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.PredictionDecision", b =>
+                {
+                    b.HasOne("BFF.Models.Entities.Prediction", null)
+                        .WithMany()
+                        .HasForeignKey("PredictionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_prediction_decisions_predictions");
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.PredictionEvidence", b =>
+                {
+                    b.HasOne("BFF.Models.Entities.Prediction", null)
+                        .WithMany("Evidence")
+                        .HasForeignKey("PredictionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_prediction_evidence_predictions");
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.PredictionFactor", b =>
+                {
+                    b.HasOne("BFF.Models.Entities.Prediction", null)
+                        .WithMany("Factors")
+                        .HasForeignKey("PredictionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_prediction_factors_predictions");
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.TaskAssignment", b =>
+                {
+                    b.HasOne("BFF.Models.Entities.WorkTask", null)
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_task_assignments_tasks");
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.TaskPrediction", b =>
+                {
+                    b.HasOne("BFF.Models.Entities.Prediction", null)
+                        .WithMany()
+                        .HasForeignKey("PredictionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_task_predictions_predictions");
+
+                    b.HasOne("BFF.Models.Entities.WorkTask", null)
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_task_predictions_tasks");
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.TaskReport", b =>
+                {
+                    b.HasOne("BFF.Models.Entities.WorkTask", null)
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_task_reports_tasks");
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.TaskReturn", b =>
+                {
+                    b.HasOne("BFF.Models.Entities.WorkTask", null)
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_task_returns_tasks");
+                });
+
+            modelBuilder.Entity("BFF.Models.Entities.Prediction", b =>
+                {
+                    b.Navigation("Evidence");
+
+                    b.Navigation("Factors");
                 });
 #pragma warning restore 612, 618
         }

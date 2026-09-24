@@ -38,6 +38,62 @@ MVC-пайплайн — а значит, и его конфиг сериали�
 имена claim'ов в `ClaimsPrincipal` теперь совпадают с тем, что реально в payload, без скрытого
 переименования.
 
+## Доменные сущности D1/D3/D4/D6-доп/D8 — реализация целиком за один проход
+
+По итогам ревью документа аналитика «домены-и-сущности.md» (см. артефакт «Межсервисная модель данных
+think-front») реализованы все ~20 сущностей из категории «точно в BFF»: топология (D1: `MonitoringObject`,
+`Picket`, `Sensor`, `SensorLink`, `MapLayer`), прогнозы (D3: `Prediction` + `PredictionFactor`/
+`PredictionEvidence`/`PredictionDecision`, `FactAlert`), заявки и работы (D4: `WorkTask` + `TaskPrediction`/
+`TaskAssignment`/`TaskReport`/`TaskReturn`, `Incident`), дополнения D6 (`ScheduleEntry`, `UserActivity`,
+`AssignedObject`, `Brigade`, `EngineerProfile`) и админ-настройки D8 (`ModelVersion` — только control-часть,
+`Coefficient`, `RetrainJob`, `IgnoredRange`). Одна миграция `AddDomainEntities`.
+
+Решения, принятые по ходу:
+
+- **`MonitoringObject`, не `Object`; `WorkTask`, не `Task`.** Голые имена конфликтуют с `System.Object` и
+  `System.Threading.Tasks.Task`. Таблицы в БД всё равно `objects`/`tasks`, как в исходном документе —
+  расхождение только в имени C#-класса.
+- **DTO и валидаторы сгруппированы по агрегату в один файл**, а не один класс — один файл, как для
+  `Users`/`Groups`/`Permissions`. При ~20 сущностях и 3–4 DTO на каждую это ~90 файлов против 9 — тот же
+  код, тот же уровень организации (namespace/подпапка на агрегат), просто без отдельного файла на каждый
+  маленький POCO.
+- **Enum'ы новых доменов сериализуются как есть, через `JsonStringEnumConverter` (camelCase) в
+  `Program.cs`**, а не через ручные `ToApiString()`/`TryParse` расширения, как `PrincipalType`/
+  `MemberType`. Тех было два и они уже написаны руками; тут — десяток, ручной конвертер на каждый не
+  оправдан.
+- **`sensor.state/last_value/last_ts` не заведены.** Как отмечено в разборе доменного документа, это
+  снимок потока, а не карточка — источник правды здесь `tf-funnel`, не BFF. `Sensor` в этой реализации —
+  только словарная часть.
+- **`prediction_score`, полная почасовая сетка модели — не заведена.** По объёму (~11 тыс. строк/сутки)
+  это ближе к аналитике, чем к CRUD-домену BFF — решение отложено до разговора с ML-командой (см. артефакт,
+  раздел «пограничные случаи»).
+- **`model_version` — только control-часть** (переключение `is_default`, кто/когда). Реестр
+  версий/метрик/`registry_ref` остаётся за `tf-model`; в BFF `ModelVersion.Id`/`Name` — по сути кэш-ссылка,
+  не полноценный реестр.
+- **Межсервисных FK по-прежнему нет** (`WorkTask.ObjectId`, `Prediction.ObjectId` и т.п. — обычные `int`
+  без `HasOne`/FK на `objects`), а вот **внутридоменные FK есть** (`PredictionFactor` → `Prediction`,
+  `TaskAssignment` → `WorkTask` и т.д., все каскадные). Тот же принцип, что уже был у `group_members`:
+  полиморфные/кросс-доменные связи — по id без FK, связи внутри одного агрегата — с FK.
+- **Пользовательские ссылки (`DispatcherId`, `EngineerId`, `CreatedBy` и т.п.) — тоже без FK на `users`.**
+  RBAC (D6-ядро) в этой модели — свой домен наравне с D1/D3/D4/D8, и правило «без FK между доменами»
+  применено и здесь, не только к `object_id`.
+- **Атомарный захват заявки** (`WorkTaskService.TakeAsync`, «кто первый взял — тот и ведёт», раздел 4.1
+  исходного документа) — через `Where(...).ExecuteUpdateAsync(...)` с условием `Status == New` в самом
+  `WHERE`: обычный EF LINQ bulk-update, не сырой SQL, семантически равнозначен `UPDATE ... WHERE status =
+  'NEW'` из документа. Нулевое число затронутых строк → `409 task_already_taken`.
+- **Присутствие (`UserActivity`) пишет `TokenAuthenticationMiddleware`** на каждый успешный запрос, но с
+  троттлингом через `IMemoryCache` (не чаще раза в `PresenceOptions.FlushIntervalSeconds`, по умолчанию
+  30 сек) — прямое требование раздела 6.4 исходного документа: «запись на каждый запрос бьёт по базе».
+  Ошибка трекинга присутствия никогда не валит сам запрос (try/catch с логом).
+- **Окно «онлайн» и интервал троттлинга — конфигурируемые** (`PresenceOptions`, секция `Presence` в
+  конфиге), не захардкожены — документ прямо просит «вынести в настройку, а не зашивать в код».
+- **Коэффициенты и решение диспетчера остаются в БД (`PredictionDecision`, `Coefficient` с версией), но
+  топики `tf.dispatch.decisions`/`tf.dispatch.settings` не заведены** — это инфраструктурная работа вне
+  кода BFF (см. артефакт, пункт 8 открытых вопросов); без них consumer на стороне `tf-model` работать не
+  будет, но API и хранение на стороне BFF уже готовы.
+- **Новые коды ресурсов регистрируются `scripts/002_seed_domain_resources.sql`** (создан, не выполнялся),
+  который также выдаёт группе `admins` `manage` на все новые ресурсы — по аналогии с `001`.
+
 ## `AUTH_JWKS_URL` отдаёт PEM-ключ, а не JWKS-документ
 
 По факту (проверено запросом к реальному `tf-auth`): эндпоинт, на который указывает `AUTH_JWKS_URL`,

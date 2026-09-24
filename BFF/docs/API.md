@@ -154,6 +154,18 @@ system_group_protected`. Иначе удаляет группу, все её р�
 **POST `/resources`** — зарегистрировать новый код ресурса: `{ code, name }`. Дубликат кода → `409
 duplicate_code`.
 
+## Доменные сущности (объекты, датчики, прогнозы, заявки, график/присутствие/инженеры, админ-настройки)
+
+Полный справочник — [`FRONTEND_INTEGRATION.md`](FRONTEND_INTEGRATION.md), раздел 8 (TS-типы всех DTO +
+таблицы эндпоинтов `/objects`, `/sensors`, `/predictions`, `/fact-alerts`, `/tasks`, `/incidents`,
+`/users/{id}/schedule`, `/users/{id}/assigned-objects`, `/users/{id}/engineer-profile`, `/presence`,
+`/brigades`, `/model-versions`, `/coefficients`, `/retrain-jobs`, `/ignored-ranges`). Не дублирую здесь —
+таблиц много, а формат идентичен разделам выше (путь / право / тело / ответ).
+
+Новые коды ресурсов: `objects`, `sensors`, `predictions`, `tasks`, `incidents`, `schedule`,
+`assigned_objects`, `engineers`, `model_settings` — регистрируются `scripts/002_seed_domain_resources.sql`
+(создан, не выполнялся).
+
 ## Доступные значения `permission`
 
 `create`, `read`, `update`, `delete`, `export`, `import`, `manage`. `manage` — надправо: даёт доступ к
