@@ -156,11 +156,13 @@ duplicate_code`.
 
 ## Доменные сущности (объекты, датчики, прогнозы, заявки, график/присутствие/инженеры, админ-настройки)
 
-Полный справочник — [`FRONTEND_INTEGRATION.md`](FRONTEND_INTEGRATION.md), раздел 8 (TS-типы всех DTO +
-таблицы эндпоинтов `/objects`, `/sensors`, `/predictions`, `/fact-alerts`, `/tasks`, `/incidents`,
-`/users/{id}/schedule`, `/users/{id}/assigned-objects`, `/users/{id}/engineer-profile`, `/presence`,
-`/brigades`, `/model-versions`, `/coefficients`, `/retrain-jobs`, `/ignored-ranges`). Не дублирую здесь —
-таблиц много, а формат идентичен разделам выше (путь / право / тело / ответ).
+Полный справочник — [`FRONTEND_INTEGRATION_DOMAIN_MODELS.md`](FRONTEND_INTEGRATION_DOMAIN_MODELS.md)
+(TS-типы всех DTO + таблицы эндпоинтов `/objects`, `/sensors`, `/predictions`, `/fact-alerts`, `/tasks`,
+`/incidents`, `/users/{id}/schedule`, `/users/{id}/assigned-objects`, `/users/{id}/engineer-profile`,
+`/presence`, `/brigades`, `/model-versions`, `/coefficients`, `/retrain-jobs`, `/ignored-ranges`). Базовый
+контур `users`/`groups`/`permissions` — в парном документе,
+[`FRONTEND_INTEGRATION_GROUPS_USERS_PERMISSIONS.md`](FRONTEND_INTEGRATION_GROUPS_USERS_PERMISSIONS.md).
+Не дублирую здесь — таблиц много, а формат идентичен разделам выше (путь / право / тело / ответ).
 
 Новые коды ресурсов: `objects`, `sensors`, `predictions`, `tasks`, `incidents`, `schedule`,
 `assigned_objects`, `engineers`, `model_settings` — регистрируются `scripts/002_seed_domain_resources.sql`

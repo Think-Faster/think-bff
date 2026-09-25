@@ -174,8 +174,9 @@ RBAC-таблиц, см. `docs/DECISIONS.md`).
 
 Альтернатива на будущее (не вместо скрипта, а для эксплуатации): после деплоя тот же результат можно
 получить через `POST /resources` и `POST /permissions/grants` (права `permissions:manage`,
-`docs/FRONTEND_INTEGRATION.md`/`docs/API.md`) — но начальную регистрация ресурса всё равно стоит держать
-в SQL-скрипте как воспроизводимую часть инфраструктуры, а не только через API вручную один раз.
+`docs/FRONTEND_INTEGRATION_GROUPS_USERS_PERMISSIONS.md`/`docs/API.md`) — но начальную регистрацию ресурса
+всё равно стоит держать в SQL-скрипте как воспроизводимую часть инфраструктуры, а не только через API
+вручную один раз.
 
 ## 7. Управление правами — ничего писать не нужно
 
@@ -190,13 +191,14 @@ RBAC-таблиц, см. `docs/DECISIONS.md`).
   эндпоинтах нет и не будет;
 - `GET /permissions/me` для любого пользователя сам покажет `"requests": ["read", "create", ...]`, если
   права есть — фронтенду тоже ничего объяснять не нужно сверх того, что уже в
-  `docs/FRONTEND_INTEGRATION.md`.
+  `docs/FRONTEND_INTEGRATION_DOMAIN_MODELS.md`.
 
 ## 8. Обновить документацию
 
 - `docs/API.md` — добавить раздел `Заявки — /requests` по образцу существующих.
-- `docs/FRONTEND_INTEGRATION.md` — добавить TS-типы DTO и строки в таблицу эндпоинтов (раздел 5–6 того
-  файла).
+- `docs/FRONTEND_INTEGRATION_DOMAIN_MODELS.md` (для доменной сущности вроде «заявок»; для правки
+  RBAC-контура — `docs/FRONTEND_INTEGRATION_GROUPS_USERS_PERMISSIONS.md`) — добавить TS-типы DTO и строки
+  в таблицу эндпоинтов.
 - `docs/DECISIONS.md` — только если по ходу пришлось принять неочевидное решение (soft vs hard delete,
   нестандартный набор прав и т.п.) — фиксируй так же, как остальные решения там.
 
@@ -210,4 +212,4 @@ RBAC-таблиц, см. `docs/DECISIONS.md`).
 - [ ] `rbac_version` в коде сервиса заявок не трогается (это не RBAC-таблица).
 - [ ] Ресурс `requests` зарегистрирован в `resources` тем же SQL-скриптом, что и (опционально) стартовые
       гранты для `admins`.
-- [ ] `docs/API.md` и `docs/FRONTEND_INTEGRATION.md` обновлены.
+- [ ] `docs/API.md` и `docs/FRONTEND_INTEGRATION_DOMAIN_MODELS.md` обновлены.
