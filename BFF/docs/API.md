@@ -165,8 +165,9 @@ duplicate_code`.
 Не дублирую здесь — таблиц много, а формат идентичен разделам выше (путь / право / тело / ответ).
 
 Новые коды ресурсов: `objects`, `sensors`, `predictions`, `tasks`, `incidents`, `schedule`,
-`assigned_objects`, `engineers`, `model_settings` — регистрируются `scripts/002_seed_domain_resources.sql`
-(создан, не выполнялся).
+`assigned_objects`, `engineers`, `presence`, `model_settings` — регистрируются тем же единым
+`scripts/001_seed_initial_data.sql`, что и базовые `users`/`groups`/`permissions` (создан, не
+выполнялся).
 
 ## Доступные значения `permission`
 

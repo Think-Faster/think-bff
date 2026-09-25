@@ -127,7 +127,7 @@ type PermissionName = "create" | "read" | "update" | "delete" | "export" | "impo
 
 - Предопределённые (всегда существующие) коды ресурсов: `users`, `groups`, `permissions`. Дальше можно
   заводить свои через `POST /resources` — уже заведены `objects`, `sensors`, `predictions`, `tasks`,
-  `incidents`, `schedule`, `assigned_objects`, `engineers`, `model_settings` (см.
+  `incidents`, `schedule`, `assigned_objects`, `engineers`, `presence`, `model_settings` (см.
   `FRONTEND_INTEGRATION_DOMAIN_MODELS.md`).
 
 - **Как гейтить UI:**
