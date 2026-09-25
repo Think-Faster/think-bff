@@ -24,7 +24,7 @@ src/
   BFF.Application/       # бизнес-логика, сервисы, валидаторы, DI-композиция
   BFF.Infrastructure/    # клиент сервиса аутентификации, валидация JWT
 deploy/                  # Dockerfile, docker-compose.yml, отдельный контур миграций
-scripts/                 # 001_seed_admins_group.sql — создать, не выполнять
+scripts/                 # 001_seed_initial_data.sql — создать, не выполнять
 ```
 
 Зависимости строго в одну сторону: `WebApi -> Application, Contracts, Infrastructure`; `Application ->
@@ -90,12 +90,15 @@ docker compose -f deploy/migration/docker-compose.migrations.yml --profile migra
 
 ## Начальные данные
 
-`scripts/001_seed_admins_group.sql` создаёт системную группу `admins`, базовые ресурсы
-(`users`/`groups`/`permissions`) и выдаёт группе полный доступ (маска 127). **Файл создан, но не
-выполнялся.** Выполняется вручную, один раз, после применения миграций:
+`scripts/001_seed_initial_data.sql` — единый файл начальных данных: создаёт системную группу `admins`,
+регистрирует все коды ресурсов, которые знает текущая версия кода (базовые `users`/`groups`/`permissions`
+и доменные `objects`/`sensors`/`predictions`/`tasks`/`incidents`/`schedule`/`assigned_objects`/
+`engineers`/`model_settings`), и выдаёт группе полный доступ (маска 127) на каждый из них. **Файл создан,
+но не выполнялся.** Идемпотентен — безопасно гонять повторно (при переезде на новое окружение, или после
+добавления в файл кода нового ресурса). Выполняется вручную, после применения миграций:
 
 ```bash
-psql -v schema=bff -f scripts/001_seed_admins_group.sql
+psql -v schema=bff -f scripts/001_seed_initial_data.sql
 ```
 
 Первого администратора нужно добавить в группу `admins` вручную — команда для этого есть закомментированной

@@ -1,7 +1,6 @@
 namespace BFF.Models.Constants;
 
-/// <summary>Predefined resource codes, also seeded by scripts/001_seed_admins_group.sql and
-/// scripts/002_seed_domain_resources.sql.</summary>
+/// <summary>Predefined resource codes, also seeded by scripts/001_seed_initial_data.sql.</summary>
 public static class ResourceCodes
 {
     public const string Users = "users";
