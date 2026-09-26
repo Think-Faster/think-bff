@@ -278,3 +278,49 @@ Serilog штатно конфигурируется через `Serilog:MinimumL
 На машине установлен .NET SDK 9.0.311, при этом рантайм 8.0.24 тоже присутствует. Все проекты явно
 таргетятся на `net8.0` через `Directory.Build.props`, как требует раздел 2 (LTS) — SDK 9 умеет собирать
 `net8.0`-проекты без изменений в TFM.
+
+## Переход на Vault — только `postgres/bff`, без Kafka/RabbitMQ/Redis/`app/tf-bff`
+
+ТЗ по Vault (раздел 3) описывает общий набор путей — `postgres/bff`, `kafka/bff`, `rabbit/bff`, `redis`,
+`app/tf-bff` — как шаблон для сервисов вообще, но прямо разрешает не заводить путь, если сервис его не
+использует. В коде BFF на сегодня нет ни одного клиента Kafka/RabbitMQ/Redis (только EF Core + Npgsql) и
+нет собственных секретов уровня приложения (SMTP, токены ботов, внешние API-ключи) — значит, единственный
+реальный секрет — пароль Postgres, причём два разных для двух разных ролей (`bff_user` — приложение,
+`bff_admin` — миграции). Заведён один путь `secret/tf/postgres/bff` с двумя ключами
+(`TF_PG_BFF_USER_PASSWORD`, `TF_PG_BFF_ADMIN_PASSWORD`), остальные пути из шаблона не создавались.
+Подробная инвентаризация и обоснование — `docs/VAULT_MIGRATION.md`.
+
+## Vault: `vault-entrypoint.sh` берётся из ТЗ без изменений, оборачивает существующий `entrypoint.sh`
+
+Скрипт `vault-entrypoint.sh` скопирован из приложения к ТЗ буквально (раздел 5.2 — «положить в корень
+репозитория как есть»); никакая логика внутри не переписывалась. Для основного приложения он и раньше
+не было отдельного entrypoint-скрипта — раньше `ENTRYPOINT` в `deploy/Dockerfile` был просто
+`["dotnet", "BFF.WebApi.dll"]`, поэтому `vault-entrypoint.sh` подставлен как новый `ENTRYPOINT`, а старая
+команда ушла в `CMD` (он передаёт её как `"$@"` в финальный `exec`). Для контура миграций уже существовал
+свой `entrypoint.sh` (создание схемы + `dotnet ef database update`) — его переписывать под Vault было бы
+избыточно и рискованно, поэтому `vault-entrypoint.sh` подставлен как `ENTRYPOINT`, а прежний
+`/entrypoint.sh` — как `CMD`: одна и та же обёртка одинаково работает в обоих контейнерах, экспортирует
+секреты в окружение и передаёт управление тому, что было раньше.
+
+## Vault: `VAULT_ROLE_ID`/`VAULT_SECRET_ID` — через GitHub Environments, не repo-secrets
+
+`docker-compose.yml`/`docker-compose.migrations.yml` требуют `VAULT_ROLE_ID`/`VAULT_SECRET_ID` через
+`${VAR:?ошибка}` — то есть `docker compose` откажется стартовать без явной ошибки, если переменной нет в
+окружении процесса, который его вызывает (а не только в `.env`-файле сервиса). Эти два значения относятся
+к конкретному стенду (dev/prod у разных AppRole) и не должны лежать в `.env` на сервере вообще (раздел
+5.2 ТЗ — принцип «Vault-креды не в файле, а в окружении процесса деплоя»). Поэтому они заведены как
+секреты в GitHub Environments `dev`/`prod` (не repo-level secrets), обе задействующие эту схему джобы
+(`deploy-dev.yml`, `run-bff-migrations.yml`) получили `environment: dev`, и значения прокидываются в
+удалённую SSH-сессию через уже существующий паттерн `env:`+`envs:` у `appleboy/ssh-action` (тот же, что
+раньше защитил `TARGET_BRANCH` от script-injection) — так `docker compose` на сервере видит их в своём
+окружении и может подставить в `${VAULT_ROLE_ID}`/`${VAULT_SECRET_ID}` из compose-файла.
+
+## Vault: переименования `DB_USER`/`DB_NAME`/`DB_MIGRATION_USER` под каноничные из ТЗ
+
+Раздел 5.6 ТЗ фиксирует конкретные имена: пользователь приложения `bff_user`, пользователь миграций
+`bff_admin`, база `tf`. Раньше в `.env.example`/`appsettings.json` были плейсхолдеры `bff_app`/
+`bff_migrator`/`thinkfront` (введённые агентом на самом первом этапе, до этого ТЗ) — переименованы везде
+(`deploy/.env.example`, `deploy/migration/.env.example`, `src/BFF.WebApi/appsettings.json`) для
+консистентности с новым ТЗ и с тем, что реально будет создано в Vault/Postgres на стенде. Это только
+переименование плейсхолдеров, не изменение поведения кода — сами переменные (`DB_USER`, `DB_NAME`,
+`DB_MIGRATION_USER`) как читались, так и читаются.

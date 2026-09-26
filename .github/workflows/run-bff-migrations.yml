@@ -18,11 +18,16 @@ env:
 jobs:
   migrate:
     runs-on: ubuntu-latest
+    # VAULT_ROLE_ID/VAULT_SECRET_ID live in this GitHub Environment's secrets — see
+    # docs/VAULT_MIGRATION.md. Must exist in repo settings (with those two secrets) beforehand.
+    environment: dev
     steps:
       - name: Run migrations container via SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
           TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
+          VAULT_ROLE_ID: ${{ secrets.VAULT_ROLE_ID }}
+          VAULT_SECRET_ID: ${{ secrets.VAULT_SECRET_ID }}
         with:
           host: ${{ secrets.DEV_IP }}
           username: ${{ secrets.DEV_USER }}
@@ -30,8 +35,10 @@ jobs:
           # workflow_dispatch inputs are attacker-influenceable text, so they must never be interpolated
           # directly into the script body (GitHub's own linter flags this as a script-injection risk — a
           # branch name like `x; rm -rf /` would execute as shell). Pass it through `envs` instead and
-          # reference it as a shell variable, which treats it as pure data.
-          envs: TARGET_BRANCH
+          # reference it as a shell variable, which treats it as pure data. VAULT_ROLE_ID/VAULT_SECRET_ID
+          # are forwarded the same way so `docker compose` below can resolve ${VAULT_ROLE_ID}/
+          # ${VAULT_SECRET_ID} referenced in docker-compose.migrations.yml.
+          envs: TARGET_BRANCH,VAULT_ROLE_ID,VAULT_SECRET_ID
           script: |
             set -e
             cd ${{ secrets.DEV_PATH }}

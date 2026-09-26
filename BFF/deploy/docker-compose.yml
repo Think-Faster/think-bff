@@ -9,6 +9,21 @@ services:
     # the sole entry point from outside (section 12.2).
     env_file:
       - .env
+    environment:
+      # Доступ к Vault: из GitHub Secrets (Environment dev/prod) через окружение выкатки —
+      # см. .github/workflows/deploy-dev.yml. Никогда не кладутся в .env на сервере.
+      VAULT_ADDR: http://vault:8200
+      VAULT_ROLE_ID: ${VAULT_ROLE_ID:?VAULT_ROLE_ID is not set}
+      VAULT_SECRET_ID: ${VAULT_SECRET_ID:?VAULT_SECRET_ID is not set}
+
+      # Единственный секрет, который реально нужен этому сервису сегодня (docs/VAULT_MIGRATION.md) —
+      # пароль bff_user. Kafka/RabbitMQ/Redis тут не перечислены: сервис их не использует.
+      VAULT_SECRET_PATHS: postgres/bff
+      VAULT_EXPAND: DB_PASSWORD
+
+      # $$ — чтобы docker compose не подставлял сам: в контейнер попадёт литерал ${...},
+      # его заменит vault-entrypoint.sh значением TF_PG_BFF_USER_PASSWORD из Vault.
+      DB_PASSWORD: "$${TF_PG_BFF_USER_PASSWORD}"
     restart: unless-stopped
     networks:
       - app-network

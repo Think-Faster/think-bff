@@ -55,10 +55,26 @@ dotnet build
 дефолтов на проде. `appsettings.json` в `BFF.WebApi` содержит только локальные dev-дефолты и не хранит
 секретов.
 
+`DB_PASSWORD` в `.env` больше не задаётся — секреты приходят из Vault при старте контейнера (см. раздел
+«Vault» ниже). Всё остальное в этом списке — обычная конфигурация, лежит в `.env` как раньше.
+
+## Vault
+
+Пароли БД (`DB_PASSWORD`/`DB_MIGRATION_PASSWORD`) не хранятся в `.env` — их читает из Vault
+`vault-entrypoint.sh` при старте контейнера (AppRole-логин по `VAULT_ROLE_ID`/`VAULT_SECRET_ID`,
+путь `secret/tf/postgres/bff`), экспортирует как обычные переменные окружения и передаёт управление
+основному процессу. Без `VAULT_ROLE_ID` скрипт ничего не делает и сразу запускает основной процесс —
+локальная разработка с паролем прямо в `.env` продолжает работать без изменений.
+
+`VAULT_ROLE_ID`/`VAULT_SECRET_ID` живут только в GitHub Secrets (Environments `dev`/`prod`) и
+прокидываются в контейнер выкаткой (`docker-compose.yml` требует их через `${VAULT_ROLE_ID:?...}`) — в
+`.env` на сервере их быть не должно. Полная инвентаризация переменных, обоснование выбранного набора
+путей в Vault и что нужно завести администратору — [`docs/VAULT_MIGRATION.md`](docs/VAULT_MIGRATION.md).
+
 ## Docker
 
-Запуск сервиса (после того как появится сеть `app-network` и переменные в `deploy/.env`, скопированном
-из `deploy/.env.example`):
+Запуск сервиса (после того как появится сеть `app-network`, переменные в `deploy/.env`, скопированном
+из `deploy/.env.example`, и `vault` доступен в этой сети под `VAULT_ADDR=http://vault:8200`):
 
 ```bash
 docker compose -f deploy/docker-compose.yml up -d --build
@@ -81,7 +97,8 @@ docker compose -f deploy/migration/docker-compose.migrations.yml --profile migra
 Контейнер миграций сначала создаёт схему (`CREATE SCHEMA IF NOT EXISTS`), затем применяет
 `dotnet ef database update`. Учётная запись `DB_MIGRATION_USER`/`DB_MIGRATION_PASSWORD` должна иметь
 право `CREATE` на базу; рабочая учётка приложения (`DB_USER`/`DB_PASSWORD` в `deploy/.env`) такого права
-иметь не должна.
+иметь не должна. `DB_MIGRATION_PASSWORD` тоже приходит из Vault, тем же механизмом — см. раздел «Vault»
+выше.
 
 Если схему создаёт инфраструктура заранее, а `DB_MIGRATION_USER` намеренно без `CREATE` на базу — поставь
 `DB_SKIP_SCHEMA_CREATE=true` в `deploy/migration/.env`: `CREATE SCHEMA IF NOT EXISTS` всё равно требует

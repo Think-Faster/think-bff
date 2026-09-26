@@ -18,6 +18,11 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # VAULT_ROLE_ID/VAULT_SECRET_ID live in this GitHub Environment's secrets, not repo-level secrets —
+    # see docs/VAULT_MIGRATION.md. The environment (with those two secrets) must exist in repo settings
+    # before this resolves; DEV_IP/DEV_USER/DEV_SSH_KEY/DEV_PATH stay as they were (repo secrets remain
+    # visible to a job that also declares an environment).
+    environment: dev
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,10 +43,18 @@ jobs:
 
       - name: Deploy via SSH with debug
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          VAULT_ROLE_ID: ${{ secrets.VAULT_ROLE_ID }}
+          VAULT_SECRET_ID: ${{ secrets.VAULT_SECRET_ID }}
         with:
           host: ${{ secrets.DEV_IP }}
           username: ${{ secrets.DEV_USER }}
           key: ${{ secrets.DEV_SSH_KEY }}
+          # Forwarded into the remote shell's environment so `docker-compose up -d` (run further down in
+          # this same script) can resolve ${VAULT_ROLE_ID}/${VAULT_SECRET_ID} referenced in
+          # deploy/docker-compose.yml — docker-compose reads its own invoking shell's env, not GitHub
+          # Actions' — see docs/VAULT_MIGRATION.md.
+          envs: VAULT_ROLE_ID,VAULT_SECRET_ID
           script: |
             cd ${{ secrets.DEV_PATH }}
             

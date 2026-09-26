@@ -9,8 +9,10 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0
 
 # psql, used by entrypoint.sh to create the target schema before `dotnet ef database update` (section 5,
 # step 4): the schema itself is never created by a migration, since migrations must stay schema-agnostic.
+# curl/jq (bash is already present on this Debian-based image) — needed by vault-entrypoint.sh, which
+# wraps entrypoint.sh below to fetch DB_MIGRATION_PASSWORD from Vault (docs/VAULT_MIGRATION.md).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends postgresql-client \
+    && apt-get install -y --no-install-recommends postgresql-client curl jq \
     && rm -rf /var/lib/apt/lists/*
 
 RUN dotnet tool install --global dotnet-ef --version 8.*
@@ -28,4 +30,10 @@ RUN dotnet restore src/BFF.Context/BFF.Context.csproj \
 COPY deploy/migration/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-ENTRYPOINT ["/entrypoint.sh"]
+COPY vault-entrypoint.sh /usr/local/bin/vault-entrypoint.sh
+RUN chmod +x /usr/local/bin/vault-entrypoint.sh
+
+# vault-entrypoint.sh loads DB_MIGRATION_PASSWORD from Vault (or, without VAULT_ROLE_ID, does nothing)
+# and then execs entrypoint.sh below unchanged.
+ENTRYPOINT ["/usr/local/bin/vault-entrypoint.sh"]
+CMD ["/entrypoint.sh"]
