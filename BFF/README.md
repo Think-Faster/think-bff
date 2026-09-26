@@ -115,11 +115,25 @@ docker compose -f deploy/migration/docker-compose.migrations.yml --profile migra
 окружение, или после добавления в файл кода нового ресурса). Обычный SQL, без psql-специфичных `\set`/
 `:var` — схема захардкожена внутри как `bff` (поменяй, если у тебя `DB_SCHEMA` называется иначе), так
 скрипт одинаково работает и через настоящий `psql`, и через любой GUI-клиент/раннер. Выполняется вручную,
-после применения миграций:
+после применения миграций.
+
+Пароль БД теперь в Vault, не в `.env` (см. «Vault» выше), поэтому проще всего запустить через
+`scripts/seed-via-vault.sh` — он сам логинится в Vault (по `VAULT_TOKEN` или по AppRole через
+`VAULT_ROLE_ID`/`VAULT_SECRET_ID`), достаёт пароль `bff_user` из `secret/tf/postgres/bff` и прогоняет
+`001_seed_initial_data.sql`:
 
 ```bash
-psql -f scripts/001_seed_initial_data.sql
+VAULT_ADDR=http://vault:8200 VAULT_TOKEN=<ваш_токен> DB_HOST=<хост_postgres> \
+  ./scripts/seed-via-vault.sh
+```
+
+Нужны в PATH `curl`, `jq`, `psql`. Полный список переменных и пример запуска от AppRole — в шапке самого
+файла. Без этого скрипта — то же самое руками: достать пароль из
+`secret/tf/postgres/bff` (ключ `TF_PG_BFF_USER_PASSWORD`, значение в base64) и
+
+```bash
+PGPASSWORD='<пароль>' psql -h <хост> -U bff_user -d tf -f scripts/001_seed_initial_data.sql
 ```
 
 Первого администратора нужно добавить в группу `admins` вручную — команда для этого есть закомментированной
-в конце самого скрипта.
+в конце самого скрипта `001_seed_initial_data.sql`.
