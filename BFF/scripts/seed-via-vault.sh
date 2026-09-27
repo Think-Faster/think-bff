@@ -13,7 +13,7 @@
 #   VAULT_TOKEN                       человеческий токен (после `vault login`) —
 #                                     если задан, используется вместо AppRole
 #   VAULT_ROLE_ID / VAULT_SECRET_ID   AppRole сервиса, как альтернатива VAULT_TOKEN
-#   DB_HOST      (по умолчанию postgres)
+#   DB_HOST      (по умолчанию tf-postgres)
 #   DB_PORT      (по умолчанию 5432)
 #   DB_NAME      (по умолчанию tf)
 #   DB_USER      (по умолчанию bff_user)
@@ -25,7 +25,7 @@
 #     ./seed-via-vault.sh
 #
 #   VAULT_ADDR=http://vault:8200 VAULT_ROLE_ID=... VAULT_SECRET_ID=... \
-#     DB_HOST=postgres DB_USER=bff_admin SECRET_KEY=TF_PG_BFF_ADMIN_PASSWORD \
+#     DB_HOST=tf-postgres DB_USER=bff_admin SECRET_KEY=TF_PG_BFF_ADMIN_PASSWORD \
 #     ./seed-via-vault.sh
 #
 # Нужны в PATH: curl, jq, psql.
@@ -37,7 +37,7 @@ log() { echo "[seed-via-vault] $*" >&2; }
 
 : "${VAULT_ADDR:?VAULT_ADDR is not set}"
 
-DB_HOST="${DB_HOST:-postgres}"
+DB_HOST="${DB_HOST:-tf-postgres}"
 DB_PORT="${DB_PORT:-5432}"
 DB_NAME="${DB_NAME:-tf}"
 DB_USER="${DB_USER:-bff_user}"

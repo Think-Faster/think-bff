@@ -15,18 +15,12 @@ services:
       VAULT_EXPAND: DB_MIGRATION_PASSWORD
       DB_MIGRATION_PASSWORD: "$${TF_PG_BFF_ADMIN_PASSWORD}"
     networks:
-      - app-network
-      - postgree_app-network
+      - think-fast-net
     restart: "no"
     profiles: ["migrations"]
 
 networks:
-  app-network:
-    external: true
-    # Без значения по умолчанию — см. тот же комментарий в deploy/docker-compose.yml. DOCKER_NETWORK
-    # здесь и в deploy/.env должны совпадать (это одна и та же внешняя сеть, в которой сидит Vault и
-    # tf-bff), иначе тихий фолбэк на разные сети даёт 10 минут ретраев логина в Vault вместо мгновенной
-    # ошибки.
-    name: ${DOCKER_NETWORK:?DOCKER_NETWORK is not set}
-  postgree_app-network:
+  # См. тот же комментарий в deploy/docker-compose.yml — единая сеть, postgree_app-network больше не
+  # существует, Postgres теперь тоже в think-fast-net.
+  think-fast-net:
     external: true
