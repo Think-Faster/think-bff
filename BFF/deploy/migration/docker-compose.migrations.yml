@@ -23,6 +23,10 @@ services:
 networks:
   app-network:
     external: true
-    name: ${DOCKER_NETWORK:-app-network}
+    # Без значения по умолчанию — см. тот же комментарий в deploy/docker-compose.yml. DOCKER_NETWORK
+    # здесь и в deploy/.env должны совпадать (это одна и та же внешняя сеть, в которой сидит Vault и
+    # tf-bff), иначе тихий фолбэк на разные сети даёт 10 минут ретраев логина в Vault вместо мгновенной
+    # ошибки.
+    name: ${DOCKER_NETWORK:?DOCKER_NETWORK is not set}
   postgree_app-network:
     external: true

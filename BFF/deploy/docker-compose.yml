@@ -47,6 +47,10 @@ services:
 networks:
   app-network:
     external: true
-    name: ${DOCKER_NETWORK:-app-network}
+    # Без значения по умолчанию: тихий фолбэк на "app-network" однажды привёл к тому, что этот
+    # сервис и bff-migrations (у которого DOCKER_NETWORK в .env не совпадал) молча оказались в разных
+    # docker-сетях — Vault был не виден только из одной из них, а vault-entrypoint.sh 10 минут
+    # ретраил логин, прежде чем упасть по таймауту, вместо мгновенной понятной ошибки здесь.
+    name: ${DOCKER_NETWORK:?DOCKER_NETWORK is not set}
   postgree_app-network:
     external: true
