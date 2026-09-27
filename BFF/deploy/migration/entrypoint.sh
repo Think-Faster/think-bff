@@ -1,7 +1,8 @@
 #!/bin/sh
-# Applies EF Core migrations to an already-running Postgres instance. NOT executed by the agent that
-# generated this repository (section 1, hard constraint #3/#4) — this only runs when a human starts the
-# bff-migrations container by hand, after the database exists (section 12.3).
+# Applies EF Core migrations, then seeds initial RBAC data (scripts/001_seed_initial_data.sql), to an
+# already-running Postgres instance. Runs automatically on every deploy (deploy-dev.yml, before tf-bff
+# starts) and can also be started by hand — see README.md "Миграции"/"Начальные данные". NOT executed by
+# the agent that generated this repository (section 1, hard constraint #3/#4).
 set -eu
 
 : "${DB_HOST:?DB_HOST is required}"
@@ -53,3 +54,11 @@ export DB_CONNECTION_STRING="Host=${DB_HOST};Port=${DB_PORT};Database=${DB_NAME}
 dotnet ef database update \
   --project src/BFF.Context \
   --startup-project src/BFF.WebApi
+
+# Коды ресурсов, группа admins, её права и (только на действительно новом стенде — см. сам файл)
+# плейсхолдер-профиль первого администратора. Идемпотентен, безопасно гонять на каждом деплое —
+# см. scripts/001_seed_initial_data.sql.
+echo "Seeding initial RBAC data..."
+PGPASSWORD="${DB_MIGRATION_PASSWORD}" psql \
+  --host "${DB_HOST}" --port "${DB_PORT}" --dbname "${DB_NAME}" --username "${DB_MIGRATION_USER}" \
+  --set ON_ERROR_STOP=on --file scripts/001_seed_initial_data.sql
