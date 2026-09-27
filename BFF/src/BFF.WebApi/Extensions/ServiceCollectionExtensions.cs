@@ -11,6 +11,7 @@ public static class ServiceCollectionExtensions
     private static readonly string[] RequiredEnvVars =
     {
         "DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD", "DB_SCHEMA", "AUTH_SERVICE_URL", "AUTH_JWKS_URL",
+        "SMTP_HOST", "SMTP_FROM",
     };
 
     public static void ValidateRequiredConfiguration(this IConfiguration configuration)

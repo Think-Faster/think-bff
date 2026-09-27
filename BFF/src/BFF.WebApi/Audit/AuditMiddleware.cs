@@ -41,6 +41,7 @@ public sealed class AuditMiddleware
         [("POST", "coefficients")] = new("threshold.changed", "coefficient"),
         [("POST", "ignored-ranges")] = new("model.muted", "ignored_range"),
         [("DELETE", "ignored-ranges/{id:guid}")] = new("model.unmuted", "ignored_range"),
+        [("POST", "notifications/email")] = new("notification.email_sent", "notification", "subject"),
     };
 
     private readonly RequestDelegate _next;

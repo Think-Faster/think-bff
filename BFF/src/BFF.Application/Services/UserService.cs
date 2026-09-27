@@ -62,6 +62,7 @@ public sealed class UserService : IUserService
             LastName = request.LastName,
             FirstName = request.FirstName,
             MiddleName = request.MiddleName,
+            Email = request.Email,
             IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
@@ -89,6 +90,7 @@ public sealed class UserService : IUserService
         user.LastName = request.LastName;
         user.FirstName = request.FirstName;
         user.MiddleName = request.MiddleName;
+        user.Email = request.Email;
         user.IsActive = request.IsActive;
         user.UpdatedAt = DateTimeOffset.UtcNow;
 
@@ -222,6 +224,22 @@ public sealed class UserService : IUserService
     private static string FormatFullName(User u) =>
         string.Join(' ', new[] { u.LastName, u.FirstName, u.MiddleName }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
+    public async Task<IReadOnlyList<UserEmailDto>> ResolveEmailsAsync(IReadOnlyList<Guid> userIds, CancellationToken ct)
+    {
+        var distinctIds = userIds.Distinct().ToList();
+
+        var found = await _context.Users.AsNoTracking()
+            .Where(u => distinctIds.Contains(u.Id))
+            .Select(u => new UserEmailDto { UserId = u.Id, Found = true, Email = u.Email })
+            .ToListAsync(ct);
+
+        var foundIds = found.Select(f => f.UserId).ToHashSet();
+        var missing = distinctIds.Except(foundIds)
+            .Select(id => new UserEmailDto { UserId = id, Found = false, Email = null });
+
+        return found.Concat(missing).ToList();
+    }
+
     private static UserListItemDto ToListItemDto(User u) => new()
     {
         Id = u.Id,
@@ -229,6 +247,7 @@ public sealed class UserService : IUserService
         LastName = u.LastName,
         FirstName = u.FirstName,
         MiddleName = u.MiddleName,
+        Email = u.Email,
         IsActive = u.IsActive,
     };
 
@@ -239,6 +258,7 @@ public sealed class UserService : IUserService
         LastName = u.LastName,
         FirstName = u.FirstName,
         MiddleName = u.MiddleName,
+        Email = u.Email,
         IsActive = u.IsActive,
         Groups = groups,
     };
