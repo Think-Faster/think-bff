@@ -13,5 +13,7 @@ public sealed class BrigadeConfiguration : IEntityTypeConfiguration<Brigade>
         builder.HasKey(b => b.Id).HasName("pk_brigades");
         builder.Property(b => b.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property(b => b.Name).HasColumnName("name").IsRequired();
+        builder.Property(b => b.Unit).HasColumnName("unit");
+        builder.Property(b => b.LeaderId).HasColumnName("leader_id");
     }
 }

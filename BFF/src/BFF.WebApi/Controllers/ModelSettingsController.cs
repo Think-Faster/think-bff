@@ -19,19 +19,22 @@ public sealed class ModelSettingsController : ControllerBase
     private readonly IValidator<CreateCoefficientRequest> _createCoefficientValidator;
     private readonly IValidator<CreateRetrainJobRequest> _createRetrainJobValidator;
     private readonly IValidator<CreateIgnoredRangeRequest> _createIgnoredRangeValidator;
+    private readonly IValidator<UpsertWorkScheduleEntryRequest> _upsertWorkValidator;
 
     public ModelSettingsController(
         IModelSettingsService service,
         IValidator<CreateModelVersionRequest> createModelVersionValidator,
         IValidator<CreateCoefficientRequest> createCoefficientValidator,
         IValidator<CreateRetrainJobRequest> createRetrainJobValidator,
-        IValidator<CreateIgnoredRangeRequest> createIgnoredRangeValidator)
+        IValidator<CreateIgnoredRangeRequest> createIgnoredRangeValidator,
+        IValidator<UpsertWorkScheduleEntryRequest> upsertWorkValidator)
     {
         _service = service;
         _createModelVersionValidator = createModelVersionValidator;
         _createCoefficientValidator = createCoefficientValidator;
         _createRetrainJobValidator = createRetrainJobValidator;
         _createIgnoredRangeValidator = createIgnoredRangeValidator;
+        _upsertWorkValidator = upsertWorkValidator;
     }
 
     [HttpGet("model-versions")]
@@ -106,6 +109,42 @@ public sealed class ModelSettingsController : ControllerBase
     public async Task<IActionResult> DeleteIgnoredRange(Guid id, CancellationToken ct)
     {
         await _service.DeleteIgnoredRangeAsync(id, ct);
+        return NoContent();
+    }
+
+    /// <summary>Planned works schedule (works_2026): the model mutes alarms of the listed incident types on the
+    /// object and its descendants for the window. Only the current, non-deleted version of each work is returned.</summary>
+    [HttpGet("work-schedule")]
+    [RequirePermission(ResourceCodes.ModelSettings, PermissionFlags.Read)]
+    public async Task<IActionResult> ListWorkSchedule(
+        [FromQuery] DateTimeOffset? from, [FromQuery] DateTimeOffset? to, [FromQuery] int? objectId, CancellationToken ct)
+        => Ok(await _service.ListWorkScheduleAsync(from, to, objectId, ct));
+
+    [HttpPost("work-schedule")]
+    [RequirePermission(ResourceCodes.ModelSettings, PermissionFlags.Manage)]
+    public async Task<IActionResult> CreateWork([FromBody] UpsertWorkScheduleEntryRequest request, CancellationToken ct)
+    {
+        await _upsertWorkValidator.ValidateAndThrowAsync(request, ct);
+        var currentUser = HttpContext.GetCurrentUser()!;
+        var result = await _service.CreateWorkAsync(currentUser.UserId, request, ct);
+        return StatusCode(StatusCodes.Status201Created, result);
+    }
+
+    [HttpPut("work-schedule/{workId:long}")]
+    [RequirePermission(ResourceCodes.ModelSettings, PermissionFlags.Manage)]
+    public async Task<IActionResult> UpdateWork(long workId, [FromBody] UpsertWorkScheduleEntryRequest request, CancellationToken ct)
+    {
+        await _upsertWorkValidator.ValidateAndThrowAsync(request, ct);
+        var currentUser = HttpContext.GetCurrentUser()!;
+        return Ok(await _service.UpdateWorkAsync(workId, currentUser.UserId, request, ct));
+    }
+
+    [HttpDelete("work-schedule/{workId:long}")]
+    [RequirePermission(ResourceCodes.ModelSettings, PermissionFlags.Manage)]
+    public async Task<IActionResult> DeleteWork(long workId, CancellationToken ct)
+    {
+        var currentUser = HttpContext.GetCurrentUser()!;
+        await _service.DeleteWorkAsync(workId, currentUser.UserId, ct);
         return NoContent();
     }
 }

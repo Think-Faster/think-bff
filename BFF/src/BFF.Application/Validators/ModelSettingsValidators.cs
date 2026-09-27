@@ -42,3 +42,16 @@ public sealed class CreateIgnoredRangeRequestValidator : AbstractValidator<Creat
             .WithMessage("sensorId is required when scope is 'sensor'.");
     }
 }
+
+public sealed class UpsertWorkScheduleEntryRequestValidator : AbstractValidator<UpsertWorkScheduleEntryRequest>
+{
+    public UpsertWorkScheduleEntryRequestValidator()
+    {
+        RuleFor(x => x.WorkKind).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.EndsAt).GreaterThan(x => x.StartsAt);
+        RuleFor(x => x.Source).IsInEnum();
+        RuleFor(x => x.RemovedSensor).MaximumLength(100);
+        RuleFor(x => x.Comment).MaximumLength(1000);
+        RuleForEach(x => x.IncidentTypes).NotEmpty().MaximumLength(100);
+    }
+}

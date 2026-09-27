@@ -25,6 +25,7 @@ public sealed class BffDbContext : DbContext
     public DbSet<AssignedObject> AssignedObjects => Set<AssignedObject>();
     public DbSet<Brigade> Brigades => Set<Brigade>();
     public DbSet<EngineerProfile> EngineerProfiles => Set<EngineerProfile>();
+    public DbSet<EngineerPermit> EngineerPermits => Set<EngineerPermit>();
 
     // D1 — topology
     public DbSet<MonitoringObject> Objects => Set<MonitoringObject>();
@@ -53,6 +54,7 @@ public sealed class BffDbContext : DbContext
     public DbSet<Coefficient> Coefficients => Set<Coefficient>();
     public DbSet<RetrainJob> RetrainJobs => Set<RetrainJob>();
     public DbSet<IgnoredRange> IgnoredRanges => Set<IgnoredRange>();
+    public DbSet<WorkScheduleEntry> WorkSchedule => Set<WorkScheduleEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -72,6 +74,7 @@ public sealed class BffDbContext : DbContext
         modelBuilder.ApplyConfiguration(new AssignedObjectConfiguration());
         modelBuilder.ApplyConfiguration(new BrigadeConfiguration());
         modelBuilder.ApplyConfiguration(new EngineerProfileConfiguration());
+        modelBuilder.ApplyConfiguration(new EngineerPermitConfiguration());
 
         modelBuilder.ApplyConfiguration(new MonitoringObjectConfiguration());
         modelBuilder.ApplyConfiguration(new PicketConfiguration());
@@ -96,5 +99,7 @@ public sealed class BffDbContext : DbContext
         modelBuilder.ApplyConfiguration(new CoefficientConfiguration());
         modelBuilder.ApplyConfiguration(new RetrainJobConfiguration());
         modelBuilder.ApplyConfiguration(new IgnoredRangeConfiguration());
+        modelBuilder.HasSequence<long>("work_schedule_work_id_seq");
+        modelBuilder.ApplyConfiguration(new WorkScheduleEntryConfiguration());
     }
 }
