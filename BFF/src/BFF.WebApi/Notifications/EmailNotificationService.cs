@@ -1,33 +1,42 @@
 using System.Net.Mail;
+using System.Text.RegularExpressions;
 using BFF.Application.Services;
 using BFF.Contracts.Notifications;
 using BFF.Models.Enums;
+using RabbitMQ.Client.Exceptions;
 
 namespace BFF.WebApi.Notifications;
 
 /// <summary>Оркестрирует POST /notifications/email: резолвит UserIds в email через IUserService (у
 /// WebApi нет прямого доступа к BffDbContext — раздел 3 ТЗ), схлопывает дубликаты между UserIds и
-/// Emails по итоговому адресу, лимитирует и отправляет. Scoped — зависит от scoped IUserService.</summary>
+/// Emails по итоговому адресу, лимитирует (Redis, свой барьер — раздел "Неоднозначности" в
+/// docs/DECISIONS.md) и публикует одно сообщение tf.notifications на каждого получателя (раздел 4.2
+/// задания инфраструктуры — получатели одного сообщения видят друг друга в "Кому", у нас это не
+/// нужно, поэтому один получатель = одно сообщение со своим notice_id). Scoped — зависит от scoped
+/// IUserService.</summary>
 public sealed class EmailNotificationService
 {
+    private const int MaxSubjectLength = 255;
+    private const int MaxTextLength = 20_000;
+
     private readonly IUserService _userService;
-    private readonly IEmailSender _sender;
+    private readonly INoticePublisher _publisher;
     private readonly EmailRateLimiter _rateLimiter;
     private readonly ILogger<EmailNotificationService> _logger;
 
     public EmailNotificationService(
         IUserService userService,
-        IEmailSender sender,
+        INoticePublisher publisher,
         EmailRateLimiter rateLimiter,
         ILogger<EmailNotificationService> logger)
     {
         _userService = userService;
-        _sender = sender;
+        _publisher = publisher;
         _rateLimiter = rateLimiter;
         _logger = logger;
     }
 
-    public async Task<SendEmailResponse> SendAsync(SendEmailRequest request, CancellationToken ct)
+    public async Task<SendEmailResponse> SendAsync(SendEmailRequest request, string? requestId, CancellationToken ct)
     {
         var results = new List<EmailRecipientResultDto>();
         // Email -> userId (если известен) для тех, кого ещё предстоит лимитировать и отправить.
@@ -72,6 +81,9 @@ public sealed class EmailNotificationService
             }
         }
 
+        var subject = NormalizeSubject(request.Subject);
+        var text = Truncate(request.Text, MaxTextLength);
+
         foreach (var (email, userId) in pending)
         {
             if (!await _rateLimiter.TryAcquireAsync(email, ct))
@@ -80,14 +92,29 @@ public sealed class EmailNotificationService
                 continue;
             }
 
+            var notice = new EmailNotice(
+                Schema: 1,
+                NoticeId: Guid.NewGuid(),
+                Subject: subject,
+                Text: text,
+                To: new NoticeTo(new[] { email }),
+                TicketId: request.TicketId,
+                Kind: request.Kind,
+                RequestId: requestId);
+
             try
             {
-                await _sender.SendAsync(email, request.Subject, request.Body, request.IsHtml, ct);
+                await _publisher.PublishEmailAsync(notice, ct);
                 results.Add(new EmailRecipientResultDto { Email = email, UserId = userId, Status = EmailSendStatus.Sent });
+            }
+            catch (PublishException ex)
+            {
+                _logger.LogWarning(ex, "RabbitMQ rejected notice {NoticeId} for {Email} (nack/basic.return)", notice.NoticeId, email);
+                results.Add(new EmailRecipientResultDto { Email = email, UserId = userId, Status = EmailSendStatus.Failed });
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to send email to {Email}", email);
+                _logger.LogWarning(ex, "Failed to publish notice {NoticeId} for {Email}", notice.NoticeId, email);
                 results.Add(new EmailRecipientResultDto { Email = email, UserId = userId, Status = EmailSendStatus.Failed });
             }
         }
@@ -112,4 +139,12 @@ public sealed class EmailNotificationService
             return false;
         }
     }
+
+    // Раздел 3.2 задания: переводы строк и повторные пробелы в subject заменяются одним пробелом
+    // (text — нет, там перевод строки значащий, \n).
+    private static string NormalizeSubject(string subject) =>
+        Truncate(Regex.Replace(subject.Trim(), @"\s+", " "), MaxSubjectLength);
+
+    private static string Truncate(string value, int maxLength) =>
+        value.Length > maxLength ? value[..maxLength] : value;
 }

@@ -29,7 +29,7 @@ builder.Services.AddBffAuthentication(builder.Configuration);
 builder.Services.AddBffAuthorization();
 builder.Services.AddBffCors(builder.Configuration);
 builder.Services.AddSingleton<AuditWriter>();
-builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+builder.Services.AddSingleton<INoticePublisher, RabbitMqNoticePublisher>();
 builder.Services.AddSingleton<EmailRateLimiter>();
 builder.Services.AddScoped<EmailNotificationService>();
 
