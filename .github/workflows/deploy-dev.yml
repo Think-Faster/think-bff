@@ -18,6 +18,11 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # VAULT_ROLE_ID/VAULT_SECRET_ID live in this GitHub Environment's secrets, not repo-level secrets —
+    # see docs/VAULT_MIGRATION.md. The environment (with those two secrets) must exist in repo settings
+    # before this resolves; DEV_IP/DEV_USER/DEV_SSH_KEY/DEV_PATH stay as they were (repo secrets remain
+    # visible to a job that also declares an environment).
+    environment: dev
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,46 +43,73 @@ jobs:
 
       - name: Deploy via SSH with debug
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          VAULT_ROLE_ID: ${{ secrets.VAULT_ROLE_ID }}
+          VAULT_SECRET_ID: ${{ secrets.VAULT_SECRET_ID }}
         with:
           host: ${{ secrets.DEV_IP }}
           username: ${{ secrets.DEV_USER }}
           key: ${{ secrets.DEV_SSH_KEY }}
+          # Forwarded into the remote shell's environment so `docker-compose up -d` (run further down in
+          # this same script) can resolve ${VAULT_ROLE_ID}/${VAULT_SECRET_ID} referenced in
+          # deploy/docker-compose.yml — docker-compose reads its own invoking shell's env, not GitHub
+          # Actions' — see docs/VAULT_MIGRATION.md.
+          envs: VAULT_ROLE_ID,VAULT_SECRET_ID
           script: |
+            set -e
             cd ${{ secrets.DEV_PATH }}
-            
+
             # Debug: показать текущую директорию и права
             echo "Current directory: $(pwd)"
             echo "Current user: $(whoami)"
             echo "Git status:"
             git status
-            
+
             # Git operations с правильным подходом
             echo "Fetching latest changes..."
             git fetch origin
-            
+
             echo "Checking out dev branch..."
             git checkout dev
-            
+
             echo "Resetting to origin/dev..."
             git reset --hard origin/dev
-            
+
             echo "Current commit:"
             git log -1 --oneline
-            
+
+            # Миграции — перед запуском tf-bff, той же командой, что раньше вызывалась только вручную
+            # (см. run-bff-migrations.yml). set -e выше гарантирует: если миграция упадёт, деплой tf-bff
+            # не запустится на несовпадающей схеме.
+            echo "Running database migrations..."
+            cd BFF/deploy/migration
+
+            if [ ! -f .env ]; then
+              echo "deploy/migration/.env not found on server — create it from .env.example first (it is gitignored, never committed)." >&2
+              exit 1
+            fi
+
+            docker compose -f docker-compose.migrations.yml --profile migrations build
+            docker compose -f docker-compose.migrations.yml --profile migrations up \
+              --abort-on-container-exit --exit-code-from bff-migrations
+            docker compose -f docker-compose.migrations.yml --profile migrations down
+
+            cd ../../..
+
             # Docker operations
             echo "Stopping containers..."
-            cd deploy
-            
+            cd BFF/deploy
+
             docker-compose down || true
-            
+
             echo "Building containers..."
             docker-compose build --no-cache
-            
+
             echo "Starting containers..."
             docker-compose up -d
-            
+
             echo "Container status:"
             docker-compose ps
-            
+
             echo "Showing recent logs:"
             docker-compose logs --tail=50

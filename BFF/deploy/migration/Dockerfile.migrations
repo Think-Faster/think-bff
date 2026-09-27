@@ -1,0 +1,39 @@
+# Build context is the solution root (BFF/); build with:
+#   docker build -f deploy/migration/Dockerfile.migrations .
+#
+# This image only builds the project and installs tooling. It runs nothing at build time — migrations
+# are applied by entrypoint.sh when the container starts (section 12.3), and that is a manual, one-off
+# step the agent building this repository must NOT trigger.
+
+FROM mcr.microsoft.com/dotnet/sdk:8.0
+
+# psql, used by entrypoint.sh to create the target schema before `dotnet ef database update` (section 5,
+# step 4): the schema itself is never created by a migration, since migrations must stay schema-agnostic.
+# curl/jq (bash is already present on this Debian-based image) — needed by vault-entrypoint.sh, which
+# wraps entrypoint.sh below to fetch DB_MIGRATION_PASSWORD from Vault (docs/VAULT_MIGRATION.md).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client curl jq \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN dotnet tool install --global dotnet-ef --version 8.*
+ENV PATH="${PATH}:/root/.dotnet/tools"
+
+WORKDIR /src
+COPY Directory.Build.props ./
+COPY src/ src/
+# `dotnet ef database update --startup-project src/BFF.WebApi` builds the startup project too (even
+# though BffDbContextFactory, not the WebApi host, is what actually constructs the DbContext), so both
+# projects need to be restorable here.
+RUN dotnet restore src/BFF.Context/BFF.Context.csproj \
+    && dotnet restore src/BFF.WebApi/BFF.WebApi.csproj
+
+COPY deploy/migration/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+COPY vault-entrypoint.sh /usr/local/bin/vault-entrypoint.sh
+RUN chmod +x /usr/local/bin/vault-entrypoint.sh
+
+# vault-entrypoint.sh loads DB_MIGRATION_PASSWORD from Vault (or, without VAULT_ROLE_ID, does nothing)
+# and then execs entrypoint.sh below unchanged.
+ENTRYPOINT ["/usr/local/bin/vault-entrypoint.sh"]
+CMD ["/entrypoint.sh"]

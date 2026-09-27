@@ -1,0 +1,53 @@
+services:
+  tf-bff:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: tf-bff:latest
+    container_name: tf-bff
+    # No `ports:` section on purpose — the service is only reachable from inside think-fast-net; nginx is
+    # the sole entry point from outside (section 12.2).
+    env_file:
+      - .env
+    environment:
+      # Доступ к Vault: из GitHub Secrets (Environment dev/prod) через окружение выкатки —
+      # см. .github/workflows/deploy-dev.yml. Никогда не кладутся в .env на сервере.
+      VAULT_ADDR: http://vault:8200
+      VAULT_ROLE_ID: ${VAULT_ROLE_ID:?VAULT_ROLE_ID is not set}
+      VAULT_SECRET_ID: ${VAULT_SECRET_ID:?VAULT_SECRET_ID is not set}
+
+      # Пароль bff_user (docs/VAULT_MIGRATION.md) и пароль Redis — для журнала действий: события
+      # уходят в поток `audit` (права-и-аудит §6.5). Kafka/RabbitMQ сервис пока не использует.
+      VAULT_SECRET_PATHS: postgres/bff redis
+      REDIS_HOST: tf-redis:6379
+      VAULT_EXPAND: DB_PASSWORD
+
+      # $$ — чтобы docker compose не подставлял сам: в контейнер попадёт литерал ${...},
+      # его заменит vault-entrypoint.sh значением TF_PG_BFF_USER_PASSWORD из Vault.
+      DB_PASSWORD: "$${TF_PG_BFF_USER_PASSWORD}"
+    restart: unless-stopped
+    networks:
+      - think-fast-net
+    # healthcheck:
+    #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://tf-bff:8080/health/ready"]
+    #   interval: 30s
+    #   timeout: 5s
+    #   retries: 3
+    #   start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+
+networks:
+  # Единственная сеть: Postgres, Vault, Kafka/RabbitMQ/Redis и nginx теперь все в think-fast-net (новая
+  # схема инфры, см. docs/VAULT_MIGRATION.md) — postgree_app-network больше не нужна и не существует.
+  # Имя зашито буквально, без переменной: DOCKER_NETWORK было ручным полем ровно под старую схему с
+  # двумя сетями и уже приводило к тихому рассинхрону между tf-bff и bff-migrations (см. историю в
+  # docs/DECISIONS.md) — раз сеть теперь одна и фиксированная, держать её конфигурируемой смысла нет.
+  think-fast-net:
+    external: true
