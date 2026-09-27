@@ -165,15 +165,15 @@ duplicate_code`.
 (TS-типы всех DTO + таблицы эндпоинтов `/objects`, `/sensors`, `/predictions`, `/fact-alerts`, `/tasks`,
 `/incidents`, `/users/{id}/schedule`, `/users/{id}/assigned-objects`, `/users/{id}/engineer-profile`,
 `/users/{id}/permits`, `/presence`, `/brigades`, `/model-versions`, `/coefficients`, `/retrain-jobs`,
-`/ignored-ranges`, `/work-schedule`). Базовый
+`/ignored-ranges`, `/work-schedule`, `/readings/scope`). Базовый
 контур `users`/`groups`/`permissions` — в парном документе,
 [`FRONTEND_INTEGRATION_GROUPS_USERS_PERMISSIONS.md`](FRONTEND_INTEGRATION_GROUPS_USERS_PERMISSIONS.md).
 Не дублирую здесь — таблиц много, а формат идентичен разделам выше (путь / право / тело / ответ).
 
 Новые коды ресурсов: `objects`, `sensors`, `predictions`, `tasks`, `incidents`, `schedule`,
-`assigned_objects`, `engineers`, `presence`, `model_settings`, `notifications` — регистрируются тем же
-единым `scripts/001_seed_initial_data.sql`, что и базовые `users`/`groups`/`permissions` (применяется
-автоматически при деплое — см. README.md, раздел «Начальные данные»).
+`assigned_objects`, `engineers`, `presence`, `model_settings`, `notifications`,
+`readings` — регистрируются тем же единым `scripts/001_seed_initial_data.sql`, что и базовые
+`users`/`groups`/`permissions` (применяется автоматически при деплое — см. README.md, раздел «Начальные данные»).
 
 ## Email-рассылка — `POST /notifications/email`
 

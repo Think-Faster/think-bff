@@ -42,6 +42,7 @@ public static class ApplicationServiceCollectionExtensions
         // D1 — topology
         services.AddScoped<IObjectService, ObjectService>();
         services.AddScoped<ISensorService, SensorService>();
+        services.AddScoped<IReadingsScopeService, ReadingsScopeService>();
 
         // D3 — predictions
         services.AddScoped<IPredictionService, PredictionService>();

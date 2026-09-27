@@ -32,4 +32,8 @@ public static class ResourceCodes
     // Email-рассылки (POST /notifications/email) — отдельно от users, это действие ("отправить"), а не
     // CRUD над профилями.
     public const string Notifications = "notifications";
+
+    // Sensor readings («Логи» window) — stored and streamed by tf-funnel; BFF only answers who sees what
+    // (GET /readings/scope). Read = any object; without it, only objects of the user's open tasks.
+    public const string Readings = "readings";
 }

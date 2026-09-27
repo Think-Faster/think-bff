@@ -96,6 +96,15 @@ interface SensorDto {
   // Текущее значение/состояние здесь НЕТ — это снимок потока tf-funnel, не карточка датчика.
 }
 
+// Окно «Логи»: чьи показания видны. Сами показания — у tf-funnel (/api/funnel/log, /api/funnel/stream),
+// он же и спрашивает эту ручку с токеном пользователя; фронту она нужна, только чтобы заранее знать,
+// какие объекты инженер может открыть.
+interface ReadingsScopeDto {
+  all: boolean; // true — любой объект (право readings:read): диспетчер, главный, админ
+  objectIds: number[]; // запрошенные и видимые; без запроса — объекты открытых заявок инженера
+  sensorIds: number[]; // датчики этих объектов и их потомков
+}
+
 interface CreateSensorRequest {
   id: number;
   objectId: number;
@@ -486,6 +495,17 @@ interface WorkScheduleEntryDto {
 | POST | `/sensors/{id}/links` | `sensors:update` | `201` + `SensorLinkDto` |
 | DELETE | `/sensors/{id}/links/{toSensorId}/{kind}` | `sensors:update` | `204` |
 
+### Показания датчиков (окно «Логи»)
+
+| Метод | Путь | Право | Ответ |
+| --- | --- | --- | --- |
+| GET | `/readings/scope?objectId=&objectId=` | любой вошедший, решает сервис | `ReadingsScopeDto` |
+
+- `readings:read` — любой объект с потомками; без `objectId` ответ `all: true` и пустые списки.
+- Без права видны объекты заявок, где пользователь назначен и работа не закрыта
+  (`Assigned`, `EngineerWorking`, `ReturnedToWork`), вместе с потомками. Отчёт сдан — объект пропадает.
+- До 100 `objectId`. Несуществующие отбрасываются.
+
 ### Прогнозы
 
 | Метод | Путь | Право | Ответ |
@@ -580,3 +600,10 @@ interface WorkScheduleEntryDto {
 - **Присутствие не имеет ручки записи.** `/presence` — только чтение; отметка `lastSeenAt` ставится сама
   на бэкенде при каждом аутентифицированном запросе (не чаще раза в 30 сек на юзера). Отдельный «пинг
   присутствия» с фронта не нужен и не будет учтён.
+- **Показаний датчиков в BFF нет.** История и живой поток — у tf-funnel:
+  - `GET /api/funnel/log?objectId=` — история;
+  - `GET /api/funnel/stream?objectId=` — WebSocket.
+
+  Вход по той же cookie `access_token`. Кому что видно, воронка спрашивает у `/readings/scope`.
+  Закрытие WebSocket с кодом 4401 — токен истёк: сделай любой запрос к BFF (он обновит cookie) и
+  подключись снова.
