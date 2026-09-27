@@ -17,4 +17,9 @@ public interface IModelSettingsService
     Task<IReadOnlyList<IgnoredRangeDto>> ListIgnoredRangesAsync(CancellationToken ct);
     Task<IgnoredRangeDto> CreateIgnoredRangeAsync(Guid createdBy, CreateIgnoredRangeRequest request, CancellationToken ct);
     Task DeleteIgnoredRangeAsync(Guid id, CancellationToken ct);
+
+    Task<IReadOnlyList<WorkScheduleEntryDto>> ListWorkScheduleAsync(DateTimeOffset? from, DateTimeOffset? to, int? objectId, CancellationToken ct);
+    Task<WorkScheduleEntryDto> CreateWorkAsync(Guid createdBy, UpsertWorkScheduleEntryRequest request, CancellationToken ct);
+    Task<WorkScheduleEntryDto> UpdateWorkAsync(long workId, Guid createdBy, UpsertWorkScheduleEntryRequest request, CancellationToken ct);
+    Task DeleteWorkAsync(long workId, Guid createdBy, CancellationToken ct);
 }

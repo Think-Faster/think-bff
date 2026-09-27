@@ -79,3 +79,33 @@ public sealed class CreateIgnoredRangeRequest
     public DateOnly DateTo { get; init; }
     public string Reason { get; init; } = string.Empty;
 }
+
+/// <summary>Current version of a planned work. Every edit adds a version; delete adds a version with deleted = true.</summary>
+public sealed class WorkScheduleEntryDto
+{
+    public long WorkId { get; init; }
+    public int Version { get; init; }
+    public int? ObjectId { get; init; }
+    public string WorkKind { get; init; } = string.Empty;
+    public IReadOnlyList<string> IncidentTypes { get; init; } = Array.Empty<string>();
+    public string? RemovedSensor { get; init; }
+    public DateTimeOffset StartsAt { get; init; }
+    public DateTimeOffset EndsAt { get; init; }
+    public WorkSource Source { get; init; }
+    public string? Comment { get; init; }
+    public Guid? CreatedBy { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+}
+
+/// <summary>Body of both POST (version 1) and PUT (next version) on work-schedule.</summary>
+public sealed class UpsertWorkScheduleEntryRequest
+{
+    public int? ObjectId { get; init; }
+    public string WorkKind { get; init; } = string.Empty;
+    public IReadOnlyList<string>? IncidentTypes { get; init; }
+    public string? RemovedSensor { get; init; }
+    public DateTimeOffset StartsAt { get; init; }
+    public DateTimeOffset EndsAt { get; init; }
+    public WorkSource Source { get; init; }
+    public string? Comment { get; init; }
+}

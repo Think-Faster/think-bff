@@ -329,6 +329,8 @@ interface ScheduleEntryDto {
   dateFrom: string; // "YYYY-MM-DD"
   dateTo: string;
   status: ScheduleStatus;
+  shiftStart: string | null; // "HH:mm:ss" — начало смены в каждый день интервала
+  shiftHours: number | null; // 1..24; сутки через трое — shiftStart "08:00:00", shiftHours 24
   source: string | null;
   changedBy: string;
   changedAt: string;
@@ -354,6 +356,22 @@ type EngineerStatus = "available" | "assigned" | "busy" | "unavailable";
 interface BrigadeDto {
   id: string;
   name: string;
+  unit: string | null;     // эксплуатационное подразделение (участок, район)
+  leaderId: string | null; // бригадир — userId; роль «бригадир» хранится здесь, а не в группах
+}
+
+type PermitKind = "confinedSpace" | "gasHazard" | "electrical";
+
+// Допуск инженера. Просроченный не удаляется: validUntil < сегодня — человек не проходит подбор звена.
+interface EngineerPermitDto {
+  id: string;
+  userId: string;
+  kind: PermitKind;
+  level: number | null; // confinedSpace — группа 1..3, electrical — 2..5, gasHazard — null
+  validUntil: string;   // "YYYY-MM-DD"
+  documentNo: string | null;
+  checkedBy: string | null;
+  checkedAt: string | null;
 }
 
 interface EngineerProfileDto {
@@ -410,6 +428,26 @@ interface IgnoredRangeDto {
   dateTo: string;
   reason: string;
   createdBy: string;
+  createdAt: string;
+}
+
+type WorkSource = "organizer" | "chiefDispatcher" | "carriedOver";
+
+// График плановых работ: на окне работы модель глушит тревоги перечисленных типов на объекте
+// и всех вложенных объектах. Правка — новая версия, удаление — версия с deleted; GET отдаёт только
+// последнюю неудалённую версию каждой работы.
+interface WorkScheduleEntryDto {
+  workId: number; // целое, общее с моделью: muted_work_id прогноза, works_2026.csv
+  version: number;
+  objectId: number | null; // объект любого уровня; null — объект ещё не выбран
+  workKind: string;
+  incidentTypes: string[]; // какие тревоги гасить, пусто — не гасить
+  removedSensor: string | null;
+  startsAt: string;
+  endsAt: string;
+  source: WorkSource;
+  comment: string | null;
+  createdBy: string | null;
   createdAt: string;
 }
 ```
@@ -495,9 +533,12 @@ interface IgnoredRangeDto {
 | DELETE | `/users/{id}/assigned-objects/{objectId}` | `assigned_objects:update` | `204` |
 | GET | `/users/{id}/engineer-profile` | `engineers:read` | `EngineerProfileDto` либо `404`, если профиля ещё нет |
 | PUT | `/users/{id}/engineer-profile` | `engineers:update` | upsert — `EngineerProfileDto` |
+| GET | `/users/{id}/permits` | `engineers:read` | `EngineerPermitDto[]`, включая просроченные |
+| POST | `/users/{id}/permits` | `engineers:update` | тело `{ kind, level?, validUntil, documentNo?, checkedAt? }` — `201` + `EngineerPermitDto`. `checkedBy` — текущий пользователь, `checkedAt` по умолчанию сегодня |
+| DELETE | `/users/{id}/permits/{permitId}` | `engineers:update` | `204` |
 | GET | `/presence?userIds=id1&userIds=id2` | `presence:read` | `PresenceDto[]`. Без `userIds` — все. Только чтение: пишет присутствие сам BFF на каждый аутентифицированный запрос, отдельной ручки записи нет |
 | GET | `/brigades` | `engineers:read` | `BrigadeDto[]` |
-| POST | `/brigades` | `engineers:create` | `201` + `BrigadeDto` |
+| POST | `/brigades` | `engineers:create` | тело `{ name, unit?, leaderId? }` — `201` + `BrigadeDto` |
 
 ### Админ-настройки модели
 
@@ -516,6 +557,10 @@ interface IgnoredRangeDto {
 | GET | `/ignored-ranges` | `model_settings:read` | `IgnoredRangeDto[]` |
 | POST | `/ignored-ranges` | `model_settings:manage` | `201` + `IgnoredRangeDto`. `objectId` обязателен при `scope: "object"`, `sensorId` — при `scope: "sensor"` |
 | DELETE | `/ignored-ranges/{id}` | `model_settings:manage` | `204` |
+| GET | `/work-schedule?from=&to=&objectId=` | `model_settings:read` | `WorkScheduleEntryDto[]` — последние неудалённые версии, пересекающие окно `[from, to)` |
+| POST | `/work-schedule` | `model_settings:manage` | тело `{ objectId?, workKind, incidentTypes?, removedSensor?, startsAt, endsAt, source, comment? }` — `201` + версия 1 |
+| PUT | `/work-schedule/{workId}` | `model_settings:manage` | то же тело — новая версия, `WorkScheduleEntryDto`. Удалённая или несуществующая работа — `404` |
+| DELETE | `/work-schedule/{workId}` | `model_settings:manage` | версия с `deleted`, история остаётся — `204` |
 
 ## 3. На что обратить внимание
 

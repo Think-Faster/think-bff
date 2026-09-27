@@ -25,6 +25,7 @@ public sealed class UsersController : ControllerBase
     private readonly IValidator<CreateScheduleEntryRequest> _createScheduleValidator;
     private readonly IValidator<AssignObjectRequest> _assignObjectValidator;
     private readonly IValidator<UpsertEngineerProfileRequest> _upsertEngineerProfileValidator;
+    private readonly IValidator<CreateEngineerPermitRequest> _createPermitValidator;
 
     public UsersController(
         IUserService userService,
@@ -36,7 +37,8 @@ public sealed class UsersController : ControllerBase
         IValidator<AddUserGroupsRequest> addGroupsValidator,
         IValidator<CreateScheduleEntryRequest> createScheduleValidator,
         IValidator<AssignObjectRequest> assignObjectValidator,
-        IValidator<UpsertEngineerProfileRequest> upsertEngineerProfileValidator)
+        IValidator<UpsertEngineerProfileRequest> upsertEngineerProfileValidator,
+        IValidator<CreateEngineerPermitRequest> createPermitValidator)
     {
         _userService = userService;
         _scheduleService = scheduleService;
@@ -48,6 +50,7 @@ public sealed class UsersController : ControllerBase
         _createScheduleValidator = createScheduleValidator;
         _assignObjectValidator = assignObjectValidator;
         _upsertEngineerProfileValidator = upsertEngineerProfileValidator;
+        _createPermitValidator = createPermitValidator;
     }
 
     [HttpGet]
@@ -169,5 +172,28 @@ public sealed class UsersController : ControllerBase
     {
         await _upsertEngineerProfileValidator.ValidateAndThrowAsync(request, ct);
         return Ok(await _engineerService.UpsertProfileAsync(id, request, ct));
+    }
+
+    [HttpGet("{id:guid}/permits")]
+    [RequirePermission(ResourceCodes.Engineers, PermissionFlags.Read)]
+    public async Task<IActionResult> ListPermits(Guid id, CancellationToken ct)
+        => Ok(await _engineerService.ListPermitsAsync(id, ct));
+
+    [HttpPost("{id:guid}/permits")]
+    [RequirePermission(ResourceCodes.Engineers, PermissionFlags.Update)]
+    public async Task<IActionResult> CreatePermit(Guid id, [FromBody] CreateEngineerPermitRequest request, CancellationToken ct)
+    {
+        await _createPermitValidator.ValidateAndThrowAsync(request, ct);
+        var currentUser = HttpContext.GetCurrentUser()!;
+        var result = await _engineerService.CreatePermitAsync(id, currentUser.UserId, request, ct);
+        return StatusCode(StatusCodes.Status201Created, result);
+    }
+
+    [HttpDelete("{id:guid}/permits/{permitId:guid}")]
+    [RequirePermission(ResourceCodes.Engineers, PermissionFlags.Update)]
+    public async Task<IActionResult> DeletePermit(Guid id, Guid permitId, CancellationToken ct)
+    {
+        await _engineerService.DeletePermitAsync(id, permitId, ct);
+        return NoContent();
     }
 }

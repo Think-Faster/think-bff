@@ -9,6 +9,8 @@ public sealed class ScheduleEntryDto
     public DateOnly DateFrom { get; init; }
     public DateOnly DateTo { get; init; }
     public ScheduleStatus Status { get; init; }
+    public TimeOnly? ShiftStart { get; init; }
+    public short? ShiftHours { get; init; }
     public string? Source { get; init; }
     public Guid ChangedBy { get; init; }
     public DateTimeOffset ChangedAt { get; init; }
@@ -19,5 +21,7 @@ public sealed class CreateScheduleEntryRequest
     public DateOnly DateFrom { get; init; }
     public DateOnly DateTo { get; init; }
     public ScheduleStatus Status { get; init; }
+    public TimeOnly? ShiftStart { get; init; }
+    public short? ShiftHours { get; init; }
     public string? Source { get; init; }
 }

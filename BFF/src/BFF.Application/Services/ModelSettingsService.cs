@@ -156,6 +156,109 @@ public sealed class ModelSettingsService : IModelSettingsService
         await _context.SaveChangesAsync(ct);
     }
 
+    public async Task<IReadOnlyList<WorkScheduleEntryDto>> ListWorkScheduleAsync(
+        DateTimeOffset? from, DateTimeOffset? to, int? objectId, CancellationToken ct)
+    {
+        var latest = _context.WorkSchedule.AsNoTracking()
+            .Where(w => w.Version == _context.WorkSchedule.Where(x => x.WorkId == w.WorkId).Max(x => x.Version))
+            .Where(w => !w.Deleted);
+
+        if (from is not null)
+        {
+            latest = latest.Where(w => w.EndsAt > from);
+        }
+
+        if (to is not null)
+        {
+            latest = latest.Where(w => w.StartsAt < to);
+        }
+
+        if (objectId is not null)
+        {
+            latest = latest.Where(w => w.ObjectId == objectId);
+        }
+
+        var rows = await latest.OrderBy(w => w.StartsAt).ToListAsync(ct);
+        return rows.Select(ToDto).ToList();
+    }
+
+    public async Task<WorkScheduleEntryDto> CreateWorkAsync(Guid createdBy, UpsertWorkScheduleEntryRequest request, CancellationToken ct)
+    {
+        var entity = NewVersion(0, 1, createdBy, request);
+        _context.WorkSchedule.Add(entity);
+        await _context.SaveChangesAsync(ct);
+        return ToDto(entity);
+    }
+
+    public async Task<WorkScheduleEntryDto> UpdateWorkAsync(long workId, Guid createdBy, UpsertWorkScheduleEntryRequest request, CancellationToken ct)
+    {
+        var last = await LastVersionAsync(workId, ct);
+        var entity = NewVersion(workId, last.Version + 1, createdBy, request);
+        _context.WorkSchedule.Add(entity);
+        await _context.SaveChangesAsync(ct);
+        return ToDto(entity);
+    }
+
+    public async Task DeleteWorkAsync(long workId, Guid createdBy, CancellationToken ct)
+    {
+        var last = await LastVersionAsync(workId, ct);
+        _context.WorkSchedule.Add(new WorkScheduleEntry
+        {
+            WorkId = workId,
+            Version = last.Version + 1,
+            ObjectId = last.ObjectId,
+            WorkKind = last.WorkKind,
+            IncidentTypes = last.IncidentTypes,
+            RemovedSensor = last.RemovedSensor,
+            StartsAt = last.StartsAt,
+            EndsAt = last.EndsAt,
+            Source = last.Source,
+            Comment = last.Comment,
+            Deleted = true,
+            CreatedBy = createdBy,
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+        await _context.SaveChangesAsync(ct);
+    }
+
+    private async Task<WorkScheduleEntry> LastVersionAsync(long workId, CancellationToken ct)
+    {
+        var last = await _context.WorkSchedule.AsNoTracking()
+            .Where(w => w.WorkId == workId)
+            .OrderByDescending(w => w.Version)
+            .FirstOrDefaultAsync(ct);
+
+        if (last is null || last.Deleted)
+        {
+            throw new NotFoundException($"Work {workId} not found.");
+        }
+
+        return last;
+    }
+
+    private static WorkScheduleEntry NewVersion(long workId, int version, Guid createdBy, UpsertWorkScheduleEntryRequest r) => new()
+    {
+        WorkId = workId,
+        Version = version,
+        ObjectId = r.ObjectId,
+        WorkKind = r.WorkKind,
+        IncidentTypes = r.IncidentTypes?.ToArray() ?? Array.Empty<string>(),
+        RemovedSensor = r.RemovedSensor,
+        StartsAt = r.StartsAt,
+        EndsAt = r.EndsAt,
+        Source = r.Source,
+        Comment = r.Comment,
+        CreatedBy = createdBy,
+        CreatedAt = DateTimeOffset.UtcNow,
+    };
+
+    private static WorkScheduleEntryDto ToDto(WorkScheduleEntry w) => new()
+    {
+        WorkId = w.WorkId, Version = w.Version, ObjectId = w.ObjectId, WorkKind = w.WorkKind,
+        IncidentTypes = w.IncidentTypes, RemovedSensor = w.RemovedSensor, StartsAt = w.StartsAt, EndsAt = w.EndsAt,
+        Source = w.Source, Comment = w.Comment, CreatedBy = w.CreatedBy, CreatedAt = w.CreatedAt,
+    };
+
     private static ModelVersionDto ToDto(ModelVersion v) => new()
     {
         Id = v.Id, Name = v.Name, IsDefault = v.IsDefault, SwitchedAt = v.SwitchedAt,

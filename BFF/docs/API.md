@@ -159,7 +159,8 @@ duplicate_code`.
 Полный справочник — [`FRONTEND_INTEGRATION_DOMAIN_MODELS.md`](FRONTEND_INTEGRATION_DOMAIN_MODELS.md)
 (TS-типы всех DTO + таблицы эндпоинтов `/objects`, `/sensors`, `/predictions`, `/fact-alerts`, `/tasks`,
 `/incidents`, `/users/{id}/schedule`, `/users/{id}/assigned-objects`, `/users/{id}/engineer-profile`,
-`/presence`, `/brigades`, `/model-versions`, `/coefficients`, `/retrain-jobs`, `/ignored-ranges`). Базовый
+`/users/{id}/permits`, `/presence`, `/brigades`, `/model-versions`, `/coefficients`, `/retrain-jobs`,
+`/ignored-ranges`, `/work-schedule`). Базовый
 контур `users`/`groups`/`permissions` — в парном документе,
 [`FRONTEND_INTEGRATION_GROUPS_USERS_PERMISSIONS.md`](FRONTEND_INTEGRATION_GROUPS_USERS_PERMISSIONS.md).
 Не дублирую здесь — таблиц много, а формат идентичен разделам выше (путь / право / тело / ответ).

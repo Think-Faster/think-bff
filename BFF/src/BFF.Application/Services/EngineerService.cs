@@ -18,16 +18,16 @@ public sealed class EngineerService : IEngineerService
     {
         return await _context.Brigades.AsNoTracking()
             .OrderBy(b => b.Name)
-            .Select(b => new BrigadeDto { Id = b.Id, Name = b.Name })
+            .Select(b => new BrigadeDto { Id = b.Id, Name = b.Name, Unit = b.Unit, LeaderId = b.LeaderId })
             .ToListAsync(ct);
     }
 
     public async Task<BrigadeDto> CreateBrigadeAsync(CreateBrigadeRequest request, CancellationToken ct)
     {
-        var entity = new Brigade { Id = Guid.NewGuid(), Name = request.Name };
+        var entity = new Brigade { Id = Guid.NewGuid(), Name = request.Name, Unit = request.Unit, LeaderId = request.LeaderId };
         _context.Brigades.Add(entity);
         await _context.SaveChangesAsync(ct);
-        return new BrigadeDto { Id = entity.Id, Name = entity.Name };
+        return new BrigadeDto { Id = entity.Id, Name = entity.Name, Unit = entity.Unit, LeaderId = entity.LeaderId };
     }
 
     public async Task<EngineerProfileDto?> GetProfileAsync(Guid userId, CancellationToken ct)
@@ -55,6 +55,60 @@ public sealed class EngineerService : IEngineerService
         await _context.SaveChangesAsync(ct);
         return ToDto(entity);
     }
+
+    public async Task<IReadOnlyList<EngineerPermitDto>> ListPermitsAsync(Guid userId, CancellationToken ct)
+    {
+        return await _context.EngineerPermits.AsNoTracking()
+            .Where(p => p.UserId == userId)
+            .OrderBy(p => p.Kind).ThenByDescending(p => p.ValidUntil)
+            .Select(p => ToDto(p))
+            .ToListAsync(ct);
+    }
+
+    public async Task<EngineerPermitDto> CreatePermitAsync(Guid userId, Guid checkedBy, CreateEngineerPermitRequest request, CancellationToken ct)
+    {
+        var entity = new EngineerPermit
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            Kind = request.Kind,
+            Level = request.Level,
+            ValidUntil = request.ValidUntil,
+            DocumentNo = request.DocumentNo,
+            CheckedBy = checkedBy,
+            CheckedAt = request.CheckedAt ?? DateOnly.FromDateTime(DateTime.UtcNow),
+        };
+
+        _context.EngineerPermits.Add(entity);
+        await _context.SaveChangesAsync(ct);
+        return ToDto(entity);
+    }
+
+    public async Task DeletePermitAsync(Guid userId, Guid permitId, CancellationToken ct)
+    {
+        var entity = await _context.EngineerPermits.SingleOrDefaultAsync(
+            p => p.UserId == userId && p.Id == permitId, ct);
+
+        if (entity is null)
+        {
+            return;
+        }
+
+        _context.EngineerPermits.Remove(entity);
+        await _context.SaveChangesAsync(ct);
+    }
+
+    private static EngineerPermitDto ToDto(EngineerPermit p) => new()
+    {
+        Id = p.Id,
+        UserId = p.UserId,
+        Kind = p.Kind,
+        Level = p.Level,
+        ValidUntil = p.ValidUntil,
+        DocumentNo = p.DocumentNo,
+        CheckedBy = p.CheckedBy,
+        CheckedAt = p.CheckedAt,
+    };
 
     private static EngineerProfileDto ToDto(EngineerProfile p) => new()
     {
