@@ -177,10 +177,11 @@ duplicate_code`.
 
 ## Email-рассылка — `POST /notifications/email`
 
-Право `notifications:create`. Отправляет письмо списку получателей (по `userId` или по email напрямую,
-можно смешивать) с антиспам-лимитом 1 письмо на адрес в минуту через Redis. Полное описание запроса/
-ответа и связанного нового поля `email` у `User` —
-[`FRONTEND_INTEGRATION_NOTIFICATIONS.md`](FRONTEND_INTEGRATION_NOTIFICATIONS.md).
+Право `notifications:create`. Публикует уведомление списку получателей (по `userId` или по email
+напрямую, можно смешивать) в RabbitMQ (`tf.notifications`, ключ `email`) с антиспам-лимитом 1 письмо на
+адрес в минуту через Redis; письмо реально отправляет отдельный сервис инфраструктуры (`tf-mail`) —
+доставка асинхронная, `200` значит «принято в обработку». Полное описание запроса/ответа и связанного
+нового поля `email` у `User` — [`FRONTEND_INTEGRATION_NOTIFICATIONS.md`](FRONTEND_INTEGRATION_NOTIFICATIONS.md).
 
 ## Доступные значения `permission`
 

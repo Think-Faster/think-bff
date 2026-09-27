@@ -21,31 +21,36 @@
 | `PERMISSIONS_CACHE_TTL_SECONDS`, `RBAC_VERSION_POLL_SECONDS`, `CORS_ALLOWED_ORIGINS`, `LOG_LEVEL` | настройка | как раньше, `deploy/.env` |
 | `REDIS_HOST` | настройка (не секрет — просто адрес) | как раньше, зашито в `docker-compose.yml` (`tf-redis:6379`) |
 | `TF_REDIS_PASSWORD` | **секрет** | Vault: `secret/tf/redis` → ключ `TF_REDIS_PASSWORD` (код читает его напрямую по этому имени, без `VAULT_EXPAND` — см. `AuditWriter.cs`) |
+| `RABBIT_HOST`, `RABBIT_PORT`, `RABBIT_VHOST`, `RABBIT_USER` | настройка (не секреты, есть дефолты в коде: `tf-rabbit`/`5672`/`tf`/`tf-bff`) | как раньше, `deploy/.env` (можно не задавать вовсе) |
+| `TF_RABBIT_BFF_PASSWORD` | **секрет** | Vault: `secret/tf/rabbit/bff` → ключ `TF_RABBIT_BFF_PASSWORD` (код читает напрямую по имени, без `VAULT_EXPAND` — см. `RabbitMqNoticePublisher.cs`) |
 | `VAULT_ROLE_ID`, `VAULT_SECRET_ID` | доступ к Vault (не секрет сервиса, а ключ к остальным секретам) | GitHub Secrets, Environment `dev`/`prod` — не хранятся в `.env` на сервере вообще |
 
 Сети больше нет в этом списке: раньше `DOCKER_NETWORK` была настраиваемой переменной (`deploy/.env`),
 теперь сеть одна и зашита буквально как `think-fast-net` в обоих compose-файлах — см. «Сеть: одна,
 `think-fast-net`» ниже.
 
-**Секретов у сервиса три: два пароля Postgres и пароль Redis.** Больше в текущем коде BFF ничего
-секретного нет:
+**Секретов у сервиса четыре: два пароля Postgres, пароль Redis, пароль RabbitMQ.** Больше в текущем коде
+BFF ничего секретного нет:
 
 - JWT: BFF только проверяет подпись входящего токена по публичному PEM-ключу, который сам получает по
   `AUTH_JWKS_URL` (см. `docs/DECISIONS.md`, «AUTH_JWKS_URL отдаёт PEM-ключ»). Своего JWT-секрета/приватного
   ключа на стороне BFF нет — нечего класть в `app/tf-bff`.
 - Redis подключён (журнал действий — `AuditWriter`, поток Redis `audit`, см. `docs/DECISIONS.md` про
-  Н16) — путь `secret/tf/redis` заведён в `VAULT_SECRET_PATHS` у `tf-bff`.
-- Kafka, RabbitMQ: в коде сервиса до сих пор ни один из этих клиентов не подключён (см. артефакт
-  «Межсервисная модель данных think-front» — Kafka-топики `tf.dispatch.decisions`/`tf.dispatch.settings`
-  из §9 исходного домен-документа помечены как «не заведены», без клиента с любой стороны). Пути
-  `kafka/bff`, `rabbit/bff` намеренно **не добавлены** в `VAULT_SECRET_PATHS` — общий шаблон ТЗ
-  перечисляет эти пути для сервисов вообще, но конкретно у BFF нет ни `PackageReference` на клиент, ни
-  кода, который бы их вызывал; ТЗ прямо разрешает убирать путь, если сервис им не пользуется. Как только
-  появится реальный клиент — добавить путь в `VAULT_SECRET_PATHS` обоих compose-файлов и строку в эту
-  таблицу.
+  Н16; плюс антиспам-лимитер email-рассылки, `EmailRateLimiter`) — путь `secret/tf/redis` заведён в
+  `VAULT_SECRET_PATHS` у `tf-bff`.
+- RabbitMQ подключён (публикация email-уведомлений в `tf.notifications` для `tf-mail` — задание
+  инфраструктуры, см. `docs/DECISIONS.md`, «Пересмотр после ТЗ инфраструктуры: письма через RabbitMQ, не
+  SMTP») — путь `secret/tf/rabbit/bff` заведён в `VAULT_SECRET_PATHS` у `tf-bff`. Только публикация в
+  `tf.notifications`/`tf.model.commands` (второе пока не используется), без права объявлять
+  exchange/очереди.
+- Kafka: в коде сервиса до сих пор не подключён (см. артефакт «Межсервисная модель данных think-front» —
+  Kafka-топики `tf.dispatch.decisions`/`tf.dispatch.settings` из §9 исходного домен-документа помечены
+  как «не заведены», без клиента с любой стороны). Путь `kafka/bff` намеренно **не добавлен** в
+  `VAULT_SECRET_PATHS` — тот же принцип, что раньше применялся и к RabbitMQ: заводить путь только когда
+  есть реальный клиент.
 - `app/tf-bff` (раздел 4 ТЗ, собственные секреты) — тоже не добавлен: нет ни одного секрета для него на
-  сегодня (нет SMTP, токенов ботов, внешних API-ключей). Появится такой секрет — путь добавляется сюда
-  же, по инструкции раздела 4 ТЗ (список имя→назначение передаётся администратору без значений).
+  сегодня (нет токенов ботов, внешних API-ключей). Появится такой секрет — путь добавляется сюда же, по
+  инструкции раздела 4 ТЗ (список имя→назначение передаётся администратору без значений).
 
 ## Сеть: одна, `think-fast-net`
 
@@ -111,10 +116,14 @@ vault-entrypoint.sh:  VAULT_EXPAND=DB_PASSWORD
 
 ## Что нужно от администратора (раздел 8 ТЗ) — только имена, без значений
 
-1. Завести AppRole `tf-svc-tf-bff` с политикой на чтение `secret/tf/postgres/bff` и `secret/tf/redis`
-   (и позже — `kafka/bff`/`rabbit/bff`/`app/tf-bff`, когда они понадобятся).
+1. Завести AppRole `tf-svc-tf-bff` с политикой на чтение `secret/tf/postgres/bff`, `secret/tf/redis` и
+   `secret/tf/rabbit/bff` (и позже — `kafka/bff`/`app/tf-bff`, когда они понадобятся). Про `rabbit/bff`
+   инфраструктура сообщила, что уже настроено (пароль в Vault, права `tf-bff` на публикацию в
+   `tf.notifications`/`tf.model.commands`) — проверить, что реально доступно этому AppRole, а не
+   заводить с нуля.
 2. Завести ключи: в `secret/tf/postgres/bff` — `TF_PG_BFF_USER_PASSWORD` (пароль `bff_user`) и
-   `TF_PG_BFF_ADMIN_PASSWORD` (пароль `bff_admin`); в `secret/tf/redis` — `TF_REDIS_PASSWORD`.
+   `TF_PG_BFF_ADMIN_PASSWORD` (пароль `bff_admin`); в `secret/tf/redis` — `TF_REDIS_PASSWORD`; в
+   `secret/tf/rabbit/bff` — `TF_RABBIT_BFF_PASSWORD` (по заявлению инфраструктуры — уже заведён).
 3. В GitHub-репозитории завести Environments `dev` и `prod`, в каждом — секреты `VAULT_ROLE_ID`,
    `VAULT_SECRET_ID` для соответствующего AppRole/стенда.
 4. Собственных секретов сервиса (раздел 4 ТЗ, `app/tf-bff`) на сегодня передавать не нужно — их нет.

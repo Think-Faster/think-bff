@@ -7,8 +7,8 @@ public sealed class SendEmailRequestValidator : AbstractValidator<SendEmailReque
 {
     public SendEmailRequestValidator()
     {
-        RuleFor(x => x.Subject).NotEmpty().MaximumLength(300);
-        RuleFor(x => x.Body).NotEmpty().MaximumLength(20_000);
+        RuleFor(x => x.Subject).NotEmpty();
+        RuleFor(x => x.Text).NotEmpty();
         RuleForEach(x => x.UserIds).NotEmpty().When(x => x.UserIds is not null);
         RuleForEach(x => x.Emails).NotEmpty().EmailAddress().When(x => x.Emails is not null);
         RuleFor(x => x)

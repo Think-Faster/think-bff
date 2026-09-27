@@ -28,7 +28,10 @@ public sealed class NotificationsController : ControllerBase
     public async Task<IActionResult> SendEmail([FromBody] SendEmailRequest request, CancellationToken ct)
     {
         await _sendEmailValidator.ValidateAndThrowAsync(request, ct);
-        var result = await _emailNotificationService.SendAsync(request, ct);
+        // Сквозная трассировка до логов tf-mail (раздел 3.2/7 задания инфраструктуры) — тот же
+        // источник, что и у AuditMiddleware.
+        var requestId = HttpContext.Request.Headers["X-Request-ID"].FirstOrDefault() ?? HttpContext.TraceIdentifier;
+        var result = await _emailNotificationService.SendAsync(request, requestId, ct);
         return Ok(result);
     }
 }
