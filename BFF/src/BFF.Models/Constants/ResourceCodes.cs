@@ -28,4 +28,8 @@ public static class ResourceCodes
     // D8 — ModelVersion (control side), Coefficient, RetrainJob, IgnoredRange — bundled per the source
     // doc's own framing ("пять блоков, все под аудит" — one admin-settings permission group).
     public const string ModelSettings = "model_settings";
+
+    // Email-рассылки (POST /notifications/email) — отдельно от users, это действие ("отправить"), а не
+    // CRUD над профилями.
+    public const string Notifications = "notifications";
 }

@@ -60,7 +60,8 @@ INSERT INTO resources (code, name) VALUES
     ('assigned_objects', 'Закреплённые объекты'),
     ('engineers',        'Инженеры и бригады'),
     ('presence',         'Присутствие'),
-    ('model_settings',   'Настройки модели (админ-панель)')
+    ('model_settings',   'Настройки модели (админ-панель)'),
+    ('notifications',    'Email-рассылки')
 ON CONFLICT (code) DO NOTHING;
 
 -- 3. Группе admins — полные права (маска 127 = все биты, включая manage) на КАЖДЫЙ

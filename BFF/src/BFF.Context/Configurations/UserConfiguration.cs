@@ -17,6 +17,7 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.LastName).HasColumnName("last_name").IsRequired();
         builder.Property(u => u.FirstName).HasColumnName("first_name").IsRequired();
         builder.Property(u => u.MiddleName).HasColumnName("middle_name");
+        builder.Property(u => u.Email).HasColumnName("email").HasMaxLength(320);
         builder.Property(u => u.IsActive).HasColumnName("is_active").HasDefaultValue(true);
         builder.Property(u => u.CreatedAt).HasColumnName("created_at");
         builder.Property(u => u.UpdatedAt).HasColumnName("updated_at");
