@@ -21,6 +21,7 @@ ENV PATH="${PATH}:/root/.dotnet/tools"
 WORKDIR /src
 COPY Directory.Build.props ./
 COPY src/ src/
+COPY scripts/ scripts/
 # `dotnet ef database update --startup-project src/BFF.WebApi` builds the startup project too (even
 # though BffDbContextFactory, not the WebApi host, is what actually constructs the DbContext), so both
 # projects need to be restorable here.
