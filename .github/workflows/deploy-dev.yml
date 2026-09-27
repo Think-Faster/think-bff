@@ -56,41 +56,60 @@ jobs:
           # Actions' — see docs/VAULT_MIGRATION.md.
           envs: VAULT_ROLE_ID,VAULT_SECRET_ID
           script: |
+            set -e
             cd ${{ secrets.DEV_PATH }}
-            
+
             # Debug: показать текущую директорию и права
             echo "Current directory: $(pwd)"
             echo "Current user: $(whoami)"
             echo "Git status:"
             git status
-            
+
             # Git operations с правильным подходом
             echo "Fetching latest changes..."
             git fetch origin
-            
+
             echo "Checking out dev branch..."
             git checkout dev
-            
+
             echo "Resetting to origin/dev..."
             git reset --hard origin/dev
-            
+
             echo "Current commit:"
             git log -1 --oneline
-            
+
+            # Миграции — перед запуском tf-bff, той же командой, что раньше вызывалась только вручную
+            # (см. run-bff-migrations.yml). set -e выше гарантирует: если миграция упадёт, деплой tf-bff
+            # не запустится на несовпадающей схеме.
+            echo "Running database migrations..."
+            cd BFF/deploy/migration
+
+            if [ ! -f .env ]; then
+              echo "deploy/migration/.env not found on server — create it from .env.example first (it is gitignored, never committed)." >&2
+              exit 1
+            fi
+
+            docker compose -f docker-compose.migrations.yml --profile migrations build
+            docker compose -f docker-compose.migrations.yml --profile migrations up \
+              --abort-on-container-exit --exit-code-from bff-migrations
+            docker compose -f docker-compose.migrations.yml --profile migrations down
+
+            cd ../../..
+
             # Docker operations
             echo "Stopping containers..."
             cd BFF/deploy
-            
+
             docker-compose down || true
-            
+
             echo "Building containers..."
             docker-compose build --no-cache
-            
+
             echo "Starting containers..."
             docker-compose up -d
-            
+
             echo "Container status:"
             docker-compose ps
-            
+
             echo "Showing recent logs:"
             docker-compose logs --tail=50
