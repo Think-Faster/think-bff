@@ -71,17 +71,22 @@ dotnet build
 `.env` на сервере их быть не должно. Полная инвентаризация переменных, обоснование выбранного набора
 путей в Vault и что нужно завести администратору — [`docs/VAULT_MIGRATION.md`](docs/VAULT_MIGRATION.md).
 
+Сеть — одна, `think-fast-net` (зашита в обоих compose-файлах буквально, без переменной): в ней сидят
+Postgres (`tf-postgres`), Vault, и всё остальное, с чем сервис может взаимодействовать. Отдельной сети
+для БД (`postgree_app-network`) больше нет — инфраструктура объединила всё в одну сеть.
+
 ## Docker
 
-Запуск сервиса (после того как появится сеть `app-network`, переменные в `deploy/.env`, скопированном
-из `deploy/.env.example`, и `vault` доступен в этой сети под `VAULT_ADDR=http://vault:8200`):
+Запуск сервиса (после того как появится сеть `think-fast-net`, переменные в `deploy/.env`, скопированном
+из `deploy/.env.example`, и `vault`/`tf-postgres` доступны в этой сети):
 
 ```bash
 docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
-Порты наружу не публикуются — сервис доступен только другим контейнерам в `app-network` (nginx, вероятно
-позже — think-front). Контейнер БД в этом compose не описан: база разворачивается отдельно.
+Порты наружу не публикуются — сервис доступен только другим контейнерам в `think-fast-net` (nginx, вероятно
+позже — think-front). Контейнер БД в этом compose не описан: база (`tf-postgres`) разворачивается отдельно,
+инфраструктурой, в той же сети.
 
 ## Миграции
 
@@ -101,16 +106,15 @@ docker compose -f deploy/docker-compose.yml up -d --build
 docker compose -f deploy/migration/docker-compose.migrations.yml --profile migrations up --abort-on-container-exit
 ```
 
-Контейнер миграций сначала создаёт схему (`CREATE SCHEMA IF NOT EXISTS`), затем применяет
-`dotnet ef database update`. Учётная запись `DB_MIGRATION_USER`/`DB_MIGRATION_PASSWORD` должна иметь
-право `CREATE` на базу; рабочая учётка приложения (`DB_USER`/`DB_PASSWORD` в `deploy/.env`) такого права
-иметь не должна. `DB_MIGRATION_PASSWORD` тоже приходит из Vault, тем же механизмом — см. раздел «Vault»
-выше.
+Учётная запись `DB_MIGRATION_USER` (`bff_admin`) — владелец схемы `bff`: создаёт и меняет таблицы внутри
+неё, но саму схему, базу и роли (`bff_admin`/`bff_user`) заводит инфраструктура заранее, не миграции
+(`DB_SKIP_SCHEMA_CREATE=true` по умолчанию — см. `deploy/migration/.env.example`). Рабочая учётка
+приложения (`DB_USER`/`DB_PASSWORD` в `deploy/.env`, `bff_user`) прав на DDL не имеет вообще.
+`DB_MIGRATION_PASSWORD` приходит из Vault, тем же механизмом — см. раздел «Vault» выше.
 
-Если схему создаёт инфраструктура заранее, а `DB_MIGRATION_USER` намеренно без `CREATE` на базу — поставь
-`DB_SKIP_SCHEMA_CREATE=true` в `deploy/migration/.env`: `CREATE SCHEMA IF NOT EXISTS` всё равно требует
-`CREATE` на базу для самой попытки выполнить команду (проверка прав идёт раньше проверки «уже существует
-или нет»), так что без этого флага шаг упадёт `permission denied`, даже если схема уже на месте.
+Если всё же нужно, чтобы `entrypoint.sh` сам создавал схему (`CREATE SCHEMA IF NOT EXISTS`) — поставь
+`DB_SKIP_SCHEMA_CREATE=false`: учти, что сама эта команда требует `CREATE` на базу для одной попытки её
+выполнить, независимо от `IF NOT EXISTS` (проверка прав идёт раньше проверки «уже существует или нет»).
 
 ## Начальные данные
 
