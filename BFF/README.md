@@ -107,13 +107,17 @@ docker compose -f deploy/migration/docker-compose.migrations.yml --profile migra
 ```
 
 Учётная запись `DB_MIGRATION_USER` (`bff_admin`) — владелец схемы `bff`: создаёт и меняет таблицы внутри
-неё, но саму схему, базу и роли (`bff_admin`/`bff_user`) заводит инфраструктура заранее, не миграции
-(`DB_SKIP_SCHEMA_CREATE=true` по умолчанию — см. `deploy/migration/.env.example`). Рабочая учётка
-приложения (`DB_USER`/`DB_PASSWORD` в `deploy/.env`, `bff_user`) прав на DDL не имеет вообще.
-`DB_MIGRATION_PASSWORD` приходит из Vault, тем же механизмом — см. раздел «Vault» выше.
+неё, но саму схему, базу и роли (`bff_admin`/`bff_user`) заводит инфраструктура заранее, не миграции.
+Это архитектурный факт, а не настройка стенда, поэтому `DB_SKIP_SCHEMA_CREATE: "true"` зашит прямо в
+[`docker-compose.migrations.yml`](deploy/migration/docker-compose.migrations.yml) (переопределяет то, что
+может лежать в `.env` — `environment:` в compose всегда сильнее `env_file:`). Рабочая учётка приложения
+(`DB_USER`/`DB_PASSWORD` в `deploy/.env`, `bff_user`) прав на DDL не имеет вообще. `DB_MIGRATION_PASSWORD`
+приходит из Vault, тем же механизмом — см. раздел «Vault» выше.
 
-Если всё же нужно, чтобы `entrypoint.sh` сам создавал схему (`CREATE SCHEMA IF NOT EXISTS`) — поставь
-`DB_SKIP_SCHEMA_CREATE=false`: учти, что сама эта команда требует `CREATE` на базу для одной попытки её
+Если всё же нужно, чтобы `entrypoint.sh` сам создавал схему (`CREATE SCHEMA IF NOT EXISTS`) — например,
+для локальной разработки без готовой заранее схемы — придётся поменять `"true"` на `"false"` прямо в
+`docker-compose.migrations.yml` (значение в `.env` тут не поможет: `environment:` в compose всегда
+сильнее `env_file:`), и учесть, что сама эта команда требует `CREATE` на базу для одной попытки её
 выполнить, независимо от `IF NOT EXISTS` (проверка прав идёт раньше проверки «уже существует или нет»).
 
 ## Начальные данные

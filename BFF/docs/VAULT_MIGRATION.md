@@ -14,7 +14,7 @@
 | `DB_PASSWORD` | **секрет** | Vault: `secret/tf/postgres/bff` → ключ `TF_PG_BFF_USER_PASSWORD` |
 | `DB_MIGRATION_USER` | настройка | как раньше, `deploy/migration/.env` — `bff_admin` |
 | `DB_MIGRATION_PASSWORD` | **секрет** | Vault: `secret/tf/postgres/bff` → ключ `TF_PG_BFF_ADMIN_PASSWORD` |
-| `DB_SKIP_SCHEMA_CREATE` | настройка (флаг) | как раньше, `deploy/migration/.env` |
+| `DB_SKIP_SCHEMA_CREATE` | настройка (флаг), но зафиксирована | зашита `"true"` прямо в `docker-compose.migrations.yml` — не в `.env` (архитектурный факт: инфра владеет схемой, не настройка стенда) |
 | `AUTH_SERVICE_URL`, `AUTH_REFRESH_PATH`, `AUTH_REFRESH_TIMEOUT_SECONDS` | настройка | как раньше, `deploy/.env` |
 | `AUTH_JWKS_URL` | настройка (это URL, не ключ — сам JWT-ключ приходит по этому URL как открытый PEM-ключ, см. `docs/DECISIONS.md`) | как раньше, `deploy/.env` |
 | `AUTH_JWKS_CACHE_MINUTES`, `AUTH_ISSUER`, `AUTH_AUDIENCE`, `AUTH_ACCESS_TOKEN_COOKIE`, `AUTH_USER_ID_CLAIM` | настройка | как раньше, `deploy/.env` |
@@ -138,6 +138,12 @@ vault-entrypoint.sh:  VAULT_EXPAND=DB_PASSWORD
   разбирались по отдельности (см. `docs/DECISIONS.md`), в этой ревизии убраны структурно: сеть теперь не
   настраивается (`think-fast-net` зашит буквально), а `DB_MIGRATION_USER`/`DB_HOST` в шаблонах —
   `bff_admin`/`tf-postgres`, актуальные значения на сервере нужно свести к этим же.
+- Третий шаг (после того как сеть и пользователь были поправлены): `permission denied for database tf`
+  на `CREATE SCHEMA IF NOT EXISTS "bff"` — `bff_admin` владеет схемой, но не имеет `CREATE` на самой базе
+  (архитектурно, по решению инфраструктуры). `DB_SKIP_SCHEMA_CREATE` в `.env` на сервере ещё оставался
+  `false` (значение с прошлой итерации, до того как инфра однозначно взяла на себя владение схемой).
+  Зафиксировали `"true"` прямо в `docker-compose.migrations.yml` (см. таблицу выше) — теперь это не
+  зависит от `.env` вообще.
 
 ## Критерии приёмки (раздел 6 ТЗ) — как выполняются
 
