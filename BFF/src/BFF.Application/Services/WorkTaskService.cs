@@ -18,13 +18,19 @@ public sealed class WorkTaskService : IWorkTaskService
     }
 
     public async Task<PagedResult<WorkTaskListItemDto>> ListAsync(
-        Guid? dispatcherId, string? status, int page, int pageSize, CancellationToken ct)
+        Guid? dispatcherId, Guid? engineerId, string? status, int page, int pageSize, CancellationToken ct)
     {
         var query = _context.Tasks.AsNoTracking().AsQueryable();
 
         if (dispatcherId is { } did)
         {
             query = query.Where(t => t.DispatcherId == did);
+        }
+
+        if (engineerId is { } eid)
+        {
+            query = query.Where(t => _context.TaskAssignments
+                .Any(a => a.TaskId == t.Id && a.EngineerId == eid && a.Status == AssignmentAssigned));
         }
 
         if (!string.IsNullOrWhiteSpace(status))

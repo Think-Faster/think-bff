@@ -558,7 +558,7 @@ interface WorkScheduleEntryDto {
 
 | Метод | Путь | Право | Ответ |
 | --- | --- | --- | --- |
-| GET | `/tasks?dispatcherId=&status=&page=&pageSize=` | `tasks:read` | `PagedResult<WorkTaskListItemDto>` |
+| GET | `/tasks?dispatcherId=&status=&assignedToMe=&page=&pageSize=` | `tasks:read` | `PagedResult<WorkTaskListItemDto>`. `assignedToMe=true` — заявки, где вы назначены инженером сейчас (прежнее назначение `replaced` не считается): экран инженера, свой id знать не нужно |
 | GET | `/tasks/{id}` | `tasks:read` | `WorkTaskDto` (с вложенными `predictions`/`assignments`/`reports`/`returns`) |
 | POST | `/tasks` | `tasks:create` | `201` + `WorkTaskDto`. Дубль `number` → `409 duplicate_code` |
 | PUT | `/tasks/{id}` | `tasks:update` | `WorkTaskDto` |

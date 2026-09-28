@@ -5,8 +5,9 @@ namespace BFF.Application.Services;
 
 public interface IWorkTaskService
 {
+    /// <summary>engineerId — только заявки, где он назначен сейчас (назначение не заменено).</summary>
     Task<PagedResult<WorkTaskListItemDto>> ListAsync(
-        Guid? dispatcherId, string? status, int page, int pageSize, CancellationToken ct);
+        Guid? dispatcherId, Guid? engineerId, string? status, int page, int pageSize, CancellationToken ct);
     Task<WorkTaskDto> GetAsync(Guid id, CancellationToken ct);
     Task<WorkTaskDto> CreateAsync(CreateWorkTaskRequest request, CancellationToken ct);
     Task<WorkTaskDto> UpdateAsync(Guid id, UpdateWorkTaskRequest request, CancellationToken ct);
