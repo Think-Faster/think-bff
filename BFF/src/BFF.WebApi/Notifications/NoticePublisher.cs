@@ -18,9 +18,26 @@ public sealed record EmailNotice(
 
 public sealed record NoticeTo(IReadOnlyList<string> Emails);
 
+/// <summary>То же сообщение с routing key "telegram" — его читает tf-tg (think-infra/telegram). Письмо и
+/// Telegram об одном событии — два сообщения с одним notice_id.</summary>
+public sealed record TelegramNotice(
+    int Schema,
+    Guid NoticeId,
+    string Subject,
+    string Text,
+    TelegramTo To,
+    object? TicketId = null,
+    string? Kind = null,
+    string? RequestId = null);
+
+/// <summary>chat_id — число (у групп отрицательное) или "@канал"; поэтому элементы — long или string.</summary>
+public sealed record TelegramTo(IReadOnlyList<object> ChatIds);
+
 public interface INoticePublisher
 {
     Task PublishEmailAsync(EmailNotice notice, CancellationToken ct);
+
+    Task PublishTelegramAsync(TelegramNotice notice, CancellationToken ct);
 }
 
 /// <summary>Публикует уведомления в exchange tf.notifications — реальную отправку письма делает
@@ -31,6 +48,7 @@ public sealed class RabbitMqNoticePublisher : INoticePublisher, IAsyncDisposable
 {
     private const string Exchange = "tf.notifications";
     private const string EmailRoutingKey = "email";
+    private const string TelegramRoutingKey = "telegram";
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -58,7 +76,13 @@ public sealed class RabbitMqNoticePublisher : INoticePublisher, IAsyncDisposable
         _connection = new Lazy<Task<IConnection>>(() => factory.CreateConnectionAsync("tf-bff"));
     }
 
-    public async Task PublishEmailAsync(EmailNotice notice, CancellationToken ct)
+    public Task PublishEmailAsync(EmailNotice notice, CancellationToken ct) =>
+        PublishAsync(EmailRoutingKey, notice.NoticeId, JsonSerializer.SerializeToUtf8Bytes(notice, Json), ct);
+
+    public Task PublishTelegramAsync(TelegramNotice notice, CancellationToken ct) =>
+        PublishAsync(TelegramRoutingKey, notice.NoticeId, JsonSerializer.SerializeToUtf8Bytes(notice, Json), ct);
+
+    private async Task PublishAsync(string routingKey, Guid noticeId, byte[] body, CancellationToken ct)
     {
         var connection = await _connection.Value.WaitAsync(ct);
 
@@ -74,7 +98,7 @@ public sealed class RabbitMqNoticePublisher : INoticePublisher, IAsyncDisposable
                 ContentType = "application/json",
                 ContentEncoding = "utf-8",
                 DeliveryMode = DeliveryModes.Persistent,
-                MessageId = notice.NoticeId.ToString(),
+                MessageId = noticeId.ToString(),
             };
 
             // publisherConfirmationTrackingEnabled: ждёт ack брокера; nack/basic.return (mandatory —
@@ -82,10 +106,10 @@ public sealed class RabbitMqNoticePublisher : INoticePublisher, IAsyncDisposable
             // ошибку доставки (EmailSendStatus.Failed).
             await channel.BasicPublishAsync(
                 exchange: Exchange,
-                routingKey: EmailRoutingKey,
+                routingKey: routingKey,
                 mandatory: true,
                 basicProperties: props,
-                body: JsonSerializer.SerializeToUtf8Bytes(notice, Json),
+                body: body,
                 cancellationToken: ct);
         }
         finally

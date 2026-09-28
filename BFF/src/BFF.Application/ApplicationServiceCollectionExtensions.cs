@@ -53,6 +53,7 @@ public static class ApplicationServiceCollectionExtensions
 
         // D6 — additions
         services.AddScoped<IScheduleService, ScheduleService>();
+        services.AddScoped<IDutyService, DutyService>();
         services.AddScoped<IAssignedObjectService, AssignedObjectService>();
         services.AddScoped<IEngineerService, EngineerService>();
         services.Configure<PresenceOptions>(configuration.GetSection(PresenceOptions.SectionName));
