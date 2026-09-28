@@ -1,7 +1,9 @@
 using BFF.Application.Exceptions;
 using BFF.Context;
 using BFF.Contracts.Common;
+using System.Text.Json;
 using BFF.Contracts.Predictions;
+using BFF.Models.Constants;
 using BFF.Models.Entities;
 using BFF.Models.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -350,12 +352,19 @@ public sealed class PredictionService : IPredictionService
         return stem + Guid.NewGuid().ToString("N")[..8];
     }
 
-    public async Task<PagedResult<FactAlertDto>> ListFactAlertsAsync(int? objectId, int page, int pageSize, CancellationToken ct)
+    public async Task<PagedResult<FactAlertDto>> ListFactAlertsAsync(
+        int? objectId, bool? live, int page, int pageSize, CancellationToken ct)
     {
         var query = _context.FactAlerts.AsNoTracking().AsQueryable();
         if (objectId is { } oid)
         {
             query = query.Where(a => a.ObjectId == oid);
+        }
+
+        if (live is { } isLive)
+        {
+            var since = FactAlertLiveness.LiveSince(DateTimeOffset.UtcNow);
+            query = isLive ? query.Where(a => a.LastAt >= since) : query.Where(a => a.LastAt < since);
         }
 
         var total = await query.CountAsync(ct);
@@ -374,8 +383,11 @@ public sealed class PredictionService : IPredictionService
             Type = request.Type,
             StartedAt = request.StartedAt,
             AnnouncedAt = request.AnnouncedAt,
+            LastAt = request.LastAt ?? request.AnnouncedAt,
             TriggerSensorIds = request.TriggerSensorIds.ToArray(),
             Status = "active",
+            RouteJson = RouteJson(request.Route),
+            DetailsJson = request.DetailsJson,
         };
 
         _context.FactAlerts.Add(entity);
@@ -383,16 +395,35 @@ public sealed class PredictionService : IPredictionService
         return ToDto(entity);
     }
 
-    public async Task<(FactAlertDto Alert, bool Created)> RecordFactAlertAsync(CreateFactAlertRequest request, CancellationToken ct)
+    public async Task<(FactAlertDto Alert, bool Created)> RecordFactAlertAsync(
+        CreateFactAlertRequest request, bool announcement, CancellationToken ct)
     {
-        var existing = await _context.FactAlerts.AsNoTracking().FirstOrDefaultAsync(
+        var existing = await _context.FactAlerts.FirstOrDefaultAsync(
             a => a.ObjectId == request.ObjectId && a.Type == request.Type && a.StartedAt == request.StartedAt, ct);
-        if (existing is not null)
+        if (existing is null && !announcement)
         {
-            return (ToDto(existing), false);
+            // Начало эпизода у модели может сдвинуться (канал вернулся, другой замолчал) — тот же живой эпизод.
+            var since = FactAlertLiveness.LiveSince(DateTimeOffset.UtcNow);
+            existing = await _context.FactAlerts
+                .Where(a => a.ObjectId == request.ObjectId && a.Type == request.Type && a.LastAt >= since)
+                .OrderByDescending(a => a.LastAt)
+                .FirstOrDefaultAsync(ct);
         }
 
-        return (await CreateFactAlertAsync(request, ct), true);
+        if (existing is null)
+        {
+            return (await CreateFactAlertAsync(request, ct), true);
+        }
+
+        if (!announcement && request.LastAt is { } lastAt && lastAt > existing.LastAt)
+        {
+            existing.LastAt = lastAt;
+            existing.RouteJson = RouteJson(request.Route) ?? existing.RouteJson;
+            existing.DetailsJson = request.DetailsJson ?? existing.DetailsJson;
+            await _context.SaveChangesAsync(ct);
+        }
+
+        return (ToDto(existing), false);
     }
 
     private static PredictionDto ToDto(Prediction p) => new()
@@ -443,9 +474,24 @@ public sealed class PredictionService : IPredictionService
         Id = a.Id,
         ObjectId = a.ObjectId,
         Type = a.Type,
+        Group = a.Type.Group(),
         StartedAt = a.StartedAt,
         AnnouncedAt = a.AnnouncedAt,
+        LastAt = a.LastAt,
+        Live = a.LastAt >= FactAlertLiveness.LiveSince(DateTimeOffset.UtcNow),
         TriggerSensorIds = a.TriggerSensorIds,
         Status = a.Status,
+        Route = Route(a.RouteJson),
+        DetailsJson = a.DetailsJson,
     };
+
+    private static readonly JsonSerializerOptions RouteOptions = new(JsonSerializerDefaults.Web);
+
+    private static string? RouteJson(IReadOnlyList<FactRoutePointDto> route) =>
+        route.Count > 0 ? JsonSerializer.Serialize(route, RouteOptions) : null;
+
+    private static IReadOnlyList<FactRoutePointDto> Route(string? json) =>
+        string.IsNullOrEmpty(json)
+            ? Array.Empty<FactRoutePointDto>()
+            : JsonSerializer.Deserialize<FactRoutePointDto[]>(json, RouteOptions) ?? Array.Empty<FactRoutePointDto>();
 }

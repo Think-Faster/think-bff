@@ -26,16 +26,6 @@ public sealed class FactResultsConsumer : BackgroundService
 {
     private const string Topic = "tf.forecast.results";
 
-    private static readonly Dictionary<string, PredictionType> Types = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["fire"] = PredictionType.Fire,
-        ["gas"] = PredictionType.Gas,
-        ["flood"] = PredictionType.Flood,
-        ["equipment"] = PredictionType.EquipmentFailure,
-        ["sensor"] = PredictionType.SensorFailure,
-        ["intrusion"] = PredictionType.Intrusion,
-    };
-
     private readonly IServiceScopeFactory _scopes;
     private readonly IConfiguration _configuration;
     private readonly ILogger<FactResultsConsumer> _logger;
@@ -164,7 +154,7 @@ public sealed class FactResultsConsumer : BackgroundService
         {
             using var scope = _scopes.CreateScope();
             var predictions = scope.ServiceProvider.GetRequiredService<IPredictionService>();
-            var (alert, created) = await predictions.RecordFactAlertAsync(fact.Request, ct);
+            var (alert, created) = await predictions.RecordFactAlertAsync(fact.Request, fact.Announcement, ct);
             if (!created)
             {
                 continue;
@@ -175,9 +165,14 @@ public sealed class FactResultsConsumer : BackgroundService
         }
     }
 
-    public sealed record Fact(CreateFactAlertRequest Request, FactContext Context);
+    public sealed record Fact(CreateFactAlertRequest Request, FactContext Context, bool Announcement);
 
-    /// <summary>Объявления (new=true) из сообщения модели; прогнозы, replay и обновления — пусто.</summary>
+    // Поля блока, которые BFF хранит подробностями эпизода (§13.11); ключи — в camelCase, как в API.
+    private static readonly string[] DetailKeys =
+        { "direction", "channels", "cause", "share", "possible_accident", "temperature" };
+
+    /// <summary>Эпизоды из сообщения модели: объявления (new=true) и обновления (new=false) живых типов.
+    /// Прогнозы, replay и незнакомые типы — пусто.</summary>
     public static IReadOnlyList<Fact> Parse(string value, ILogger? logger = null)
     {
         JsonDocument doc;
@@ -209,22 +204,123 @@ public sealed class FactResultsConsumer : BackgroundService
             {
                 var block = entry.Value;
                 if (block.ValueKind != JsonValueKind.Object
-                    || !block.TryGetProperty("new", out var isNew) || isNew.ValueKind != JsonValueKind.True
-                    || !Types.TryGetValue(entry.Name, out var type)
-                    || !DateTimeOffset.TryParse(Text(block, "started_at"), out var startedAt))
+                    || !block.TryGetProperty("new", out var isNew)
+                    || isNew.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
+                    || !PredictionTypeExtensions.TryParseModel(entry.Name, out var type)
+                    || !TryTime(block, "started_at", out var startedAt))
                 {
                     continue;
                 }
 
+                var route = Route(block);
                 long? workId = block.TryGetProperty("work_id", out var w) && w.TryGetInt64(out var id) ? id : null;
                 facts.Add(new Fact(
-                    new CreateFactAlertRequest { ObjectId = objectId, Type = type, StartedAt = startedAt, AnnouncedAt = announced },
-                    new FactContext(Text(block, "note"), workId)));
+                    new CreateFactAlertRequest
+                    {
+                        ObjectId = objectId,
+                        Type = type,
+                        StartedAt = startedAt,
+                        AnnouncedAt = announced,
+                        LastAt = TryTime(block, "last_at", out var lastAt) ? lastAt : startedAt,
+                        TriggerSensorIds = route.Select(p => p.SensorId).Distinct().ToArray(),
+                        Route = route,
+                        DetailsJson = Details(block),
+                    },
+                    new FactContext(Text(block, "note"), workId),
+                    isNew.ValueKind == JsonValueKind.True));
             }
 
             return facts;
         }
     }
+
+    /// <summary>Маршрут нарушителя (§13.11): сработки охраны по времени; повтор датчика подряд модель уже
+    /// схлопнула.</summary>
+    private static IReadOnlyList<FactRoutePointDto> Route(JsonElement block)
+    {
+        if (!block.TryGetProperty("route", out var route) || route.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<FactRoutePointDto>();
+        }
+
+        var result = new List<FactRoutePointDto>();
+        foreach (var p in route.EnumerateArray())
+        {
+            if (p.ValueKind == JsonValueKind.Object
+                && p.TryGetProperty("sensor_id", out var sid) && sid.TryGetInt32(out var sensorId)
+                && TryTime(p, "at", out var at))
+            {
+                result.Add(new FactRoutePointDto { SensorId = sensorId, SType = Text(p, "stype"), At = at });
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>Подробности типа (DetailKeys) одним JSON-объектом с ключами в camelCase.</summary>
+    private static string? Details(JsonElement block)
+    {
+        var keys = DetailKeys.Where(k => block.TryGetProperty(k, out _)).ToList();
+        if (keys.Count == 0)
+        {
+            return null;
+        }
+
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            foreach (var key in keys)
+            {
+                writer.WritePropertyName(CamelCase(key));
+                WriteCamelCase(writer, block.GetProperty(key));
+            }
+
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    private static void WriteCamelCase(Utf8JsonWriter writer, JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                writer.WriteStartObject();
+                foreach (var p in element.EnumerateObject())
+                {
+                    writer.WritePropertyName(CamelCase(p.Name));
+                    WriteCamelCase(writer, p.Value);
+                }
+
+                writer.WriteEndObject();
+                break;
+            case JsonValueKind.Array:
+                writer.WriteStartArray();
+                foreach (var item in element.EnumerateArray())
+                {
+                    WriteCamelCase(writer, item);
+                }
+
+                writer.WriteEndArray();
+                break;
+            default:
+                element.WriteTo(writer);
+                break;
+        }
+    }
+
+    // possible_accident → possibleAccident, sensor_id → sensorId.
+    private static string CamelCase(string snake)
+    {
+        var parts = snake.Split('_', StringSplitOptions.RemoveEmptyEntries);
+        return string.Concat(parts.Select((part, i) =>
+            i == 0 ? part : char.ToUpperInvariant(part[0]) + part[1..]));
+    }
+
+    private static bool TryTime(JsonElement element, string name, out DateTimeOffset value) =>
+        DateTimeOffset.TryParse(Text(element, name), CultureInfo.InvariantCulture, DateTimeStyles.None, out value);
 
     /// <summary>Тревоги из прогноза модели: по одной на тип с alarm=true. Факты, чужие часы и типы без
     /// тревоги — пусто.</summary>
@@ -266,7 +362,7 @@ public sealed class FactResultsConsumer : BackgroundService
                 var block = entry.Value;
                 if (block.ValueKind != JsonValueKind.Object
                     || !block.TryGetProperty("alarm", out var alarm) || alarm.ValueKind != JsonValueKind.True
-                    || !Types.TryGetValue(entry.Name, out var type))
+                    || !PredictionTypeExtensions.TryParseModel(entry.Name, out var type))
                 {
                     continue;
                 }
@@ -275,7 +371,7 @@ public sealed class FactResultsConsumer : BackgroundService
                 var threshold = Number(block, "threshold") ?? 0;
                 var confidence = Number(block, "confidence");
                 var since = block.TryGetProperty("since_hours", out var s) && s.TryGetInt32(out var si) ? si : 0;
-                var label = TypeLabel(type);
+                var label = type.Label();
 
                 result.Add(new CreatePredictionRequest
                 {
@@ -304,17 +400,6 @@ public sealed class FactResultsConsumer : BackgroundService
             return result;
         }
     }
-
-    private static string TypeLabel(PredictionType type) => type switch
-    {
-        PredictionType.Fire => "Пожар",
-        PredictionType.Gas => "Загазованность",
-        PredictionType.Flood => "Подтопление",
-        PredictionType.EquipmentFailure => "Отказ оборудования",
-        PredictionType.SensorFailure => "Отказ датчика",
-        PredictionType.Intrusion => "Проникновение",
-        _ => type.ToString(),
-    };
 
     private static string Describe(double score, double threshold, int since, JsonElement block)
     {

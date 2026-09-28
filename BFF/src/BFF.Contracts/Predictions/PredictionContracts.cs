@@ -109,10 +109,26 @@ public sealed class FactAlertDto
     public Guid Id { get; init; }
     public int ObjectId { get; init; }
     public PredictionType Type { get; init; }
+    public AlertGroup Group { get; init; }
     public DateTimeOffset StartedAt { get; init; }
     public DateTimeOffset AnnouncedAt { get; init; }
+    public DateTimeOffset LastAt { get; init; }
+
+    /// <summary>Эпизод живой: модель сообщала о нём не раньше FactAlertLiveness.Window назад.</summary>
+    public bool Live { get; init; }
+
     public IReadOnlyList<int> TriggerSensorIds { get; init; } = Array.Empty<int>();
     public string Status { get; init; } = string.Empty;
+    public IReadOnlyList<FactRoutePointDto> Route { get; init; } = Array.Empty<FactRoutePointDto>();
+    public string? DetailsJson { get; init; }
+}
+
+/// <summary>Точка маршрута нарушителя (§13.11): сработка датчика охраны. Координаты — у датчика в справочнике.</summary>
+public sealed class FactRoutePointDto
+{
+    public int SensorId { get; init; }
+    public string? SType { get; init; }
+    public DateTimeOffset At { get; init; }
 }
 
 public sealed class CreateFactAlertRequest
@@ -121,5 +137,11 @@ public sealed class CreateFactAlertRequest
     public PredictionType Type { get; init; }
     public DateTimeOffset StartedAt { get; init; }
     public DateTimeOffset AnnouncedAt { get; init; }
+
+    /// <summary>Последнее время эпизода; без него — AnnouncedAt.</summary>
+    public DateTimeOffset? LastAt { get; init; }
+
     public IReadOnlyList<int> TriggerSensorIds { get; init; } = Array.Empty<int>();
+    public IReadOnlyList<FactRoutePointDto> Route { get; init; } = Array.Empty<FactRoutePointDto>();
+    public string? DetailsJson { get; init; }
 }
