@@ -51,12 +51,7 @@ public sealed class DutyService : IDutyService
 
         var users = await _context.Users.AsNoTracking()
             .Where(u => u.IsActive && onShift.Contains(u.Id))
-            .Select(u => new
-            {
-                u.Id,
-                u.Email,
-                Telegram = _context.EngineerProfiles.Where(p => p.UserId == u.Id).Select(p => p.Telegram).FirstOrDefault(),
-            })
+            .Select(u => new { u.Id, u.Email, u.Telegram })
             .ToListAsync(ct);
 
         return users

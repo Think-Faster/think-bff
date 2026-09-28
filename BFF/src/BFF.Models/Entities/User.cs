@@ -8,6 +8,9 @@ public sealed class User
     public string FirstName { get; set; } = string.Empty;
     public string? MiddleName { get; set; }
     public string? Email { get; set; }
+
+    /// <summary>Имя в Telegram без @, в нижнем регистре (TelegramUsername) — куда слать уведомления.</summary>
+    public string? Telegram { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

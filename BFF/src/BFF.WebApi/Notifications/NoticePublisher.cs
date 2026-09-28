@@ -30,8 +30,10 @@ public sealed record TelegramNotice(
     string? Kind = null,
     string? RequestId = null);
 
-/// <summary>chat_id — число (у групп отрицательное) или "@канал"; поэтому элементы — long или string.</summary>
-public sealed record TelegramTo(IReadOnlyList<object> ChatIds);
+/// <summary>Кому в Telegram: `chat_ids` — число (у групп отрицательное) или "@канал", поэтому элементы — long
+/// или string; `usernames` — имена людей без @ (users.telegram), chat_id по ним tf-tg берёт из связей,
+/// которые человек заводит сам, нажав «Старт» у бота. Нужен хотя бы один из списков; пустой не пишется.</summary>
+public sealed record TelegramTo(IReadOnlyList<object>? ChatIds = null, IReadOnlyList<string>? Usernames = null);
 
 public interface INoticePublisher
 {

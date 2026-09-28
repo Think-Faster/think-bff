@@ -423,7 +423,7 @@ interface EngineerProfileDto {
   userId: string;
   brigadeId: string | null;
   phone: string | null;
-  telegram: string | null;
+  telegram: string | null; // users.telegram — то же поле, что у пользователя; в запросе null — не менять
   specialization: string[];
   status: EngineerStatus;
 }

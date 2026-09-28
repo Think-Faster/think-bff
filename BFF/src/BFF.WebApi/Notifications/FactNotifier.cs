@@ -15,7 +15,8 @@ public sealed record FactContext(string? Note = null, long? WorkId = null, strin
 /// Уведомление по факту: всем, кто сейчас на смене по графику и не в отпуске (IDutyService), — письмо на
 /// почту и сообщение в Telegram через tf.notifications (tf-mail и tf-tg в think-infra). Письмо — отдельным
 /// сообщением на адресата, как у POST /notifications/email: получатели не видят друг друга. Telegram —
-/// одно сообщение на все chat_id с тем же notice_id. Ограничение «письмо в минуту» здесь не действует:
+/// одно сообщение на все имена (`to.usernames`), tf-tg шлёт каждому личное; кто не подключил бота, тому
+/// не уйдёт, остальным уйдёт. Ограничение «письмо в минуту» здесь не действует:
 /// событие шлёт система, а не человек, и одно происшествие не должно теряться из-за соседнего.
 /// </summary>
 public sealed class FactNotifier
@@ -53,12 +54,11 @@ public sealed class FactNotifier
             .OfType<string>()
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        var chats = recipients
-            .Select(r => ChatId(r.Telegram))
-            .OfType<object>()
+        var usernames = recipients
+            .Select(r => r.Telegram)
+            .OfType<string>()
             .Distinct()
             .ToList();
-        var skipped = recipients.Count(r => r.Telegram is not null && ChatId(r.Telegram) is null);
 
         var sent = 0;
         var failed = 0;
@@ -77,20 +77,20 @@ public sealed class FactNotifier
         }
 
         var telegram = false;
-        if (chats.Count > 0)
+        if (usernames.Count > 0)
         {
-            var notice = new TelegramNotice(1, Guid.NewGuid(), subject, text, new TelegramTo(chats),
+            var notice = new TelegramNotice(1, Guid.NewGuid(), subject, text, new TelegramTo(Usernames: usernames),
                 ticketId, "fact", context.RequestId);
             telegram = await TryAsync(() => _publisher.PublishTelegramAsync(notice, ct), notice.NoticeId);
         }
 
         _logger.LogInformation(
-            "Fact alert {AlertId} (object {ObjectId}, {Type}): on duty {OnDuty}, emails {Sent}/{Emails}, telegram chats {Chats} ({TelegramState}), telegram not a chat_id {Skipped}",
-            alert.Id, alert.ObjectId, alert.Type, recipients.Count, sent, emails.Count, chats.Count,
-            chats.Count == 0 ? "none" : telegram ? "queued" : "failed", skipped);
+            "Fact alert {AlertId} (object {ObjectId}, {Type}): on duty {OnDuty}, emails {Sent}/{Emails}, telegram users {Telegram} ({TelegramState})",
+            alert.Id, alert.ObjectId, alert.Type, recipients.Count, sent, emails.Count, usernames.Count,
+            usernames.Count == 0 ? "none" : telegram ? "queued" : "failed");
 
         await _audit.WriteAsync(new AuditEvent(
-            "ticket.created", failed == 0 && (chats.Count == 0 || telegram) ? "success" : "error",
+            "ticket.created", failed == 0 && (usernames.Count == 0 || telegram) ? "success" : "error",
             "service", null, "tf-bff", context.RequestId, null, "fact_alert", alert.Id.ToString(),
             new Dictionary<string, object?>
             {
@@ -102,7 +102,7 @@ public sealed class FactNotifier
                 ["on_duty"] = recipients.Count,
                 ["emails_queued"] = sent,
                 ["emails_failed"] = failed,
-                ["telegram_chats"] = telegram ? chats.Count : 0,
+                ["telegram_users"] = telegram ? usernames.Count : 0,
             }));
     }
 
@@ -157,22 +157,5 @@ public sealed class FactNotifier
             ? $"{group}, возможна авария — {type.ToLowerInvariant()}: {place}"
             : $"{group} — {type.ToLowerInvariant()}: {place}";
         return (subject, string.Join('\n', lines));
-    }
-
-    // chat_id — целое число (у групп отрицательное) или "@канал". Имя пользователя (@login) Bot API
-    // не принимает — такое значение tf-tg отклонит, но остальным чатам сообщение всё равно уйдёт.
-    private static object? ChatId(string? telegram)
-    {
-        if (telegram is null)
-        {
-            return null;
-        }
-
-        if (long.TryParse(telegram, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var id))
-        {
-            return id;
-        }
-
-        return telegram.StartsWith('@') && telegram.Length > 1 ? telegram : null;
     }
 }

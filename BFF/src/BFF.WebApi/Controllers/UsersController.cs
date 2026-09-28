@@ -6,6 +6,7 @@ using BFF.Models.Constants;
 using BFF.Models.Enums;
 using BFF.WebApi.Authorization;
 using BFF.WebApi.Extensions;
+using BFF.WebApi.Notifications;
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 
@@ -26,6 +27,8 @@ public sealed class UsersController : ControllerBase
     private readonly IValidator<AssignObjectRequest> _assignObjectValidator;
     private readonly IValidator<UpsertEngineerProfileRequest> _upsertEngineerProfileValidator;
     private readonly IValidator<CreateEngineerPermitRequest> _createPermitValidator;
+    private readonly IValidator<UpdateMyTelegramRequest> _updateMyTelegramValidator;
+    private readonly TelegramLinks _telegramLinks;
 
     public UsersController(
         IUserService userService,
@@ -38,7 +41,9 @@ public sealed class UsersController : ControllerBase
         IValidator<CreateScheduleEntryRequest> createScheduleValidator,
         IValidator<AssignObjectRequest> assignObjectValidator,
         IValidator<UpsertEngineerProfileRequest> upsertEngineerProfileValidator,
-        IValidator<CreateEngineerPermitRequest> createPermitValidator)
+        IValidator<CreateEngineerPermitRequest> createPermitValidator,
+        IValidator<UpdateMyTelegramRequest> updateMyTelegramValidator,
+        TelegramLinks telegramLinks)
     {
         _userService = userService;
         _scheduleService = scheduleService;
@@ -51,6 +56,32 @@ public sealed class UsersController : ControllerBase
         _assignObjectValidator = assignObjectValidator;
         _upsertEngineerProfileValidator = upsertEngineerProfileValidator;
         _createPermitValidator = createPermitValidator;
+        _updateMyTelegramValidator = updateMyTelegramValidator;
+        _telegramLinks = telegramLinks;
+    }
+
+    /// <summary>Своё имя в Telegram и подключён ли бот — любому вошедшему, без права на раздел «Пользователи».</summary>
+    [HttpGet("me/telegram")]
+    public async Task<IActionResult> GetMyTelegram(CancellationToken ct)
+    {
+        var currentUser = HttpContext.GetCurrentUser()!;
+        var username = await _userService.GetTelegramAsync(currentUser.UserId, ct);
+        return Ok(await TelegramStatusAsync(username, ct));
+    }
+
+    [HttpPut("me/telegram")]
+    public async Task<IActionResult> UpdateMyTelegram([FromBody] UpdateMyTelegramRequest request, CancellationToken ct)
+    {
+        await _updateMyTelegramValidator.ValidateAndThrowAsync(request, ct);
+        var currentUser = HttpContext.GetCurrentUser()!;
+        var username = await _userService.SetTelegramAsync(currentUser.UserId, request.Username, ct);
+        return Ok(await TelegramStatusAsync(username, ct));
+    }
+
+    private async Task<TelegramStatusDto> TelegramStatusAsync(string? username, CancellationToken ct)
+    {
+        var link = await _telegramLinks.GetAsync(username, ct);
+        return new TelegramStatusDto { Username = username, Linked = link.Linked, Bot = link.Bot };
     }
 
     [HttpGet]

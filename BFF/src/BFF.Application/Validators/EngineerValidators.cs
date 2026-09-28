@@ -1,4 +1,5 @@
 using BFF.Contracts.Engineers;
+using BFF.Models.Constants;
 using BFF.Models.Enums;
 using FluentValidation;
 
@@ -18,7 +19,8 @@ public sealed class UpsertEngineerProfileRequestValidator : AbstractValidator<Up
     public UpsertEngineerProfileRequestValidator()
     {
         RuleFor(x => x.Phone).MaximumLength(30);
-        RuleFor(x => x.Telegram).MaximumLength(100);
+        RuleFor(x => x.Telegram).Must(TelegramUsername.IsValidOrEmpty)
+            .WithMessage("telegram must be a Telegram username: 5-32 Latin letters, digits or _, starting with a letter.");
     }
 }
 

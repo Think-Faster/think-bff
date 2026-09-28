@@ -22,6 +22,8 @@ public sealed class EngineerProfileDto
     public Guid UserId { get; init; }
     public Guid? BrigadeId { get; init; }
     public string? Phone { get; init; }
+
+    /// <summary>Telegram пользователя (users.telegram) — один на все разделы, не только у инженера.</summary>
     public string? Telegram { get; init; }
     public IReadOnlyList<string> Specialization { get; init; } = Array.Empty<string>();
     public EngineerStatus Status { get; init; }
@@ -31,6 +33,8 @@ public sealed class UpsertEngineerProfileRequest
 {
     public Guid? BrigadeId { get; init; }
     public string? Phone { get; init; }
+
+    /// <summary>Пишется в users.telegram. null — не менять, пустая строка — убрать.</summary>
     public string? Telegram { get; init; }
     public IReadOnlyList<string>? Specialization { get; init; }
     public EngineerStatus Status { get; init; }
