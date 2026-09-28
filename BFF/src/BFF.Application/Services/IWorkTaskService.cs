@@ -21,4 +21,15 @@ public interface IWorkTaskService
     Task<TaskAssignmentDto> AssignAsync(Guid id, Guid assignedBy, CreateTaskAssignmentRequest request, CancellationToken ct);
     Task<TaskReportDto> AddReportAsync(Guid id, Guid engineerId, CreateTaskReportRequest request, CancellationToken ct);
     Task<TaskReturnDto> ReturnAsync(Guid id, Guid returnedBy, CreateTaskReturnRequest request, CancellationToken ct);
+
+    /// <summary>Инженер приступил: Assigned / ReturnedToWork -> EngineerWorking.</summary>
+    Task<WorkTaskDto> StartAsync(Guid id, TaskTransitionRequest request, CancellationToken ct);
+
+    /// <summary>Диспетчер принял отчёт: Completed -> Closed, прикреплённые прогнозы закрываются.</summary>
+    Task<WorkTaskDto> CloseAsync(Guid id, TaskTransitionRequest request, CancellationToken ct);
+
+    /// <summary>Отмена из любого активного статуса -> Cancelled, прикреплённые прогнозы закрываются.</summary>
+    Task<WorkTaskDto> CancelAsync(Guid id, TaskTransitionRequest request, CancellationToken ct);
+
+    Task<IReadOnlyList<TaskAssigneeDto>> ListAssigneesAsync(string groupCode, CancellationToken ct);
 }

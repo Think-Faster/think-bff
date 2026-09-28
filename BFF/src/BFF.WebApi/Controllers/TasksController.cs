@@ -20,6 +20,7 @@ public sealed class TasksController : ControllerBase
     private readonly IValidator<CreateTaskAssignmentRequest> _assignValidator;
     private readonly IValidator<CreateTaskReportRequest> _reportValidator;
     private readonly IValidator<CreateTaskReturnRequest> _returnValidator;
+    private readonly IValidator<TaskTransitionRequest> _transitionValidator;
 
     public TasksController(
         IWorkTaskService taskService,
@@ -28,7 +29,8 @@ public sealed class TasksController : ControllerBase
         IValidator<AttachPredictionRequest> attachValidator,
         IValidator<CreateTaskAssignmentRequest> assignValidator,
         IValidator<CreateTaskReportRequest> reportValidator,
-        IValidator<CreateTaskReturnRequest> returnValidator)
+        IValidator<CreateTaskReturnRequest> returnValidator,
+        IValidator<TaskTransitionRequest> transitionValidator)
     {
         _taskService = taskService;
         _createValidator = createValidator;
@@ -37,6 +39,7 @@ public sealed class TasksController : ControllerBase
         _assignValidator = assignValidator;
         _reportValidator = reportValidator;
         _returnValidator = returnValidator;
+        _transitionValidator = transitionValidator;
     }
 
     [HttpGet]
@@ -45,6 +48,19 @@ public sealed class TasksController : ControllerBase
         [FromQuery] Guid? dispatcherId, [FromQuery] string? status,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
         => Ok(await _taskService.ListAsync(dispatcherId, status, page, pageSize, ct));
+
+    /// <summary>Исполнители для назначения (role=engineers) и возврата диспетчеру (role=dispatchers).</summary>
+    [HttpGet("assignees")]
+    [RequirePermission(ResourceCodes.Tasks, PermissionFlags.Read)]
+    public async Task<IActionResult> Assignees([FromQuery] string role, CancellationToken ct)
+    {
+        if (role is not ("engineers" or "dispatchers"))
+        {
+            throw new ArgumentException("role: engineers или dispatchers.", nameof(role));
+        }
+
+        return Ok(await _taskService.ListAssigneesAsync(role, ct));
+    }
 
     [HttpGet("{id:guid}")]
     [RequirePermission(ResourceCodes.Tasks, PermissionFlags.Read)]
@@ -124,5 +140,35 @@ public sealed class TasksController : ControllerBase
         var currentUser = HttpContext.GetCurrentUser()!;
         var result = await _taskService.ReturnAsync(id, currentUser.UserId, request, ct);
         return StatusCode(StatusCodes.Status201Created, result);
+    }
+
+    /// <summary>Инженер приступил к работе (Assigned -> EngineerWorking). 409 invalid_status — не тот статус.</summary>
+    [HttpPost("{id:guid}/start")]
+    [RequirePermission(ResourceCodes.Tasks, PermissionFlags.Update)]
+    public async Task<IActionResult> Start(Guid id, [FromBody] TaskTransitionRequest? request, CancellationToken ct)
+    {
+        request ??= new TaskTransitionRequest();
+        await _transitionValidator.ValidateAndThrowAsync(request, ct);
+        return Ok(await _taskService.StartAsync(id, request, ct));
+    }
+
+    /// <summary>Отчёт принят, заявка закрыта (Completed -> Closed).</summary>
+    [HttpPost("{id:guid}/close")]
+    [RequirePermission(ResourceCodes.Tasks, PermissionFlags.Update)]
+    public async Task<IActionResult> Close(Guid id, [FromBody] TaskTransitionRequest? request, CancellationToken ct)
+    {
+        request ??= new TaskTransitionRequest();
+        await _transitionValidator.ValidateAndThrowAsync(request, ct);
+        return Ok(await _taskService.CloseAsync(id, request, ct));
+    }
+
+    /// <summary>Отмена заявки из любого активного статуса.</summary>
+    [HttpPost("{id:guid}/cancel")]
+    [RequirePermission(ResourceCodes.Tasks, PermissionFlags.Update)]
+    public async Task<IActionResult> Cancel(Guid id, [FromBody] TaskTransitionRequest? request, CancellationToken ct)
+    {
+        request ??= new TaskTransitionRequest();
+        await _transitionValidator.ValidateAndThrowAsync(request, ct);
+        return Ok(await _taskService.CancelAsync(id, request, ct));
     }
 }

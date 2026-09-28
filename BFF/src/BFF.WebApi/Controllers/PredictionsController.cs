@@ -55,11 +55,15 @@ public sealed class PredictionsController : ControllerBase
 
     [HttpPost("predictions/{id:guid}/decisions")]
     [RequirePermission(ResourceCodes.Predictions, PermissionFlags.Update)]
-    public async Task<IActionResult> Decide(Guid id, [FromBody] CreatePredictionDecisionRequest request, CancellationToken ct)
+    public async Task<IActionResult> Decide(
+        Guid id, [FromBody] CreatePredictionDecisionRequest request, [FromServices] ModelDecisionRelay relay,
+        CancellationToken ct)
     {
         await _decisionValidator.ValidateAndThrowAsync(request, ct);
         var currentUser = HttpContext.GetCurrentUser()!;
+        // Take заводит заявку (или прикрепляет к request.TaskId) — её id в TaskId ответа.
         var result = await _predictionService.DecideAsync(id, currentUser.UserId, request, ct);
+        await relay.DecisionAsync(HttpContext, result, ct);
         return Ok(result);
     }
 
