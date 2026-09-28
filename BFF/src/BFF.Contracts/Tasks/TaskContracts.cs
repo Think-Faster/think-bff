@@ -125,6 +125,15 @@ public sealed class TaskReturnDto
     public DateTimeOffset ReturnedAt { get; init; }
 }
 
+/// <summary>Кому можно назначить или вернуть заявку: участник группы engineers/dispatchers (с подгруппами).</summary>
+public sealed class TaskAssigneeDto
+{
+    public Guid Id { get; init; }
+    public string LastName { get; init; } = string.Empty;
+    public string FirstName { get; init; } = string.Empty;
+    public string? MiddleName { get; init; }
+}
+
 /// <summary>Переход без данных — начать работу, закрыть, отменить; комментарий дописывается к заявке.</summary>
 public sealed class TaskTransitionRequest
 {
