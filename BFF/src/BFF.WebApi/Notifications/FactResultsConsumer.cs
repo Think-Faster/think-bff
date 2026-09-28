@@ -319,8 +319,9 @@ public sealed class FactResultsConsumer : BackgroundService
             i == 0 ? part : char.ToUpperInvariant(part[0]) + part[1..]));
     }
 
+    // Модель пишет время с поясом (+03:00), а Npgsql кладёт в timestamptz только UTC — приводим сразу.
     private static bool TryTime(JsonElement element, string name, out DateTimeOffset value) =>
-        DateTimeOffset.TryParse(Text(element, name), CultureInfo.InvariantCulture, DateTimeStyles.None, out value);
+        DateTimeOffset.TryParse(Text(element, name), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out value);
 
     /// <summary>Тревоги из прогноза модели: по одной на тип с alarm=true. Факты, чужие часы и типы без
     /// тревоги — пусто.</summary>
@@ -348,7 +349,7 @@ public sealed class FactResultsConsumer : BackgroundService
             if ((Text(root, "kind") ?? "forecast") != "forecast"
                 || !(clock == "live" || (acceptReplay && clock == "replay"))
                 || !root.TryGetProperty("object_id", out var objectEl) || !objectEl.TryGetInt32(out var objectId)
-                || !DateTimeOffset.TryParse(Text(root, "hour_end"), CultureInfo.InvariantCulture, DateTimeStyles.None, out var hourEnd)
+                || !TryTime(root, "hour_end", out var hourEnd)
                 || !root.TryGetProperty("types", out var types) || types.ValueKind != JsonValueKind.Object)
             {
                 return Array.Empty<CreatePredictionRequest>();
@@ -500,7 +501,7 @@ public sealed class FactResultsConsumer : BackgroundService
         {
             if (e.ValueKind != JsonValueKind.Object
                 || !e.TryGetProperty("sensor_id", out var sid) || !sid.TryGetInt32(out var sensorId)
-                || !DateTimeOffset.TryParse(Text(e, "ts"), CultureInfo.InvariantCulture, DateTimeStyles.None, out var ts))
+                || !TryTime(e, "ts", out var ts))
             {
                 continue;
             }
