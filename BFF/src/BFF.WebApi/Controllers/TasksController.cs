@@ -42,12 +42,16 @@ public sealed class TasksController : ControllerBase
         _transitionValidator = transitionValidator;
     }
 
+    /// <summary>assignedToMe=true — заявки, где текущий пользователь назначен инженером (экран инженера).</summary>
     [HttpGet]
     [RequirePermission(ResourceCodes.Tasks, PermissionFlags.Read)]
     public async Task<IActionResult> List(
-        [FromQuery] Guid? dispatcherId, [FromQuery] string? status,
+        [FromQuery] Guid? dispatcherId, [FromQuery] string? status, [FromQuery] bool assignedToMe = false,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
-        => Ok(await _taskService.ListAsync(dispatcherId, status, page, pageSize, ct));
+    {
+        var engineerId = assignedToMe ? HttpContext.GetCurrentUser()!.UserId : (Guid?)null;
+        return Ok(await _taskService.ListAsync(dispatcherId, engineerId, status, page, pageSize, ct));
+    }
 
     /// <summary>Исполнители для назначения (role=engineers) и возврата диспетчеру (role=dispatchers).</summary>
     [HttpGet("assignees")]
