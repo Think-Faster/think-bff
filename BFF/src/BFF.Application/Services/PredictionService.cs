@@ -196,6 +196,18 @@ public sealed class PredictionService : IPredictionService
         return ToDto(entity);
     }
 
+    public async Task<(FactAlertDto Alert, bool Created)> RecordFactAlertAsync(CreateFactAlertRequest request, CancellationToken ct)
+    {
+        var existing = await _context.FactAlerts.AsNoTracking().FirstOrDefaultAsync(
+            a => a.ObjectId == request.ObjectId && a.Type == request.Type && a.StartedAt == request.StartedAt, ct);
+        if (existing is not null)
+        {
+            return (ToDto(existing), false);
+        }
+
+        return (await CreateFactAlertAsync(request, ct), true);
+    }
+
     private static PredictionDto ToDto(Prediction p) => new()
     {
         Id = p.Id,

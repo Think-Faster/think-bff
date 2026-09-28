@@ -10,5 +10,6 @@ public sealed class UpdateUserRequestValidator : AbstractValidator<UpdateUserReq
         RuleFor(x => x.LastName).NotEmpty().MaximumLength(200);
         RuleFor(x => x.FirstName).NotEmpty().MaximumLength(200);
         RuleFor(x => x.MiddleName).MaximumLength(200);
+        RuleFor(x => x.Email).EmailAddress().MaximumLength(320).When(x => !string.IsNullOrEmpty(x.Email));
     }
 }

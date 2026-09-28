@@ -2,17 +2,19 @@
 -- Файл:        001_seed_initial_data.sql
 -- Назначение:  единая точка начальных данных RBAC — системная
 --              группа admins, ВСЕ коды ресурсов, которые знает
---              текущая версия кода (базовые + доменные), и выдача
---              admins полного доступа на каждый из них.
+--              текущая версия кода (базовые + доменные), выдача
+--              admins полного доступа на каждый из них, и
+--              плейсхолдер-профиль первого администратора (только
+--              на действительно новом стенде — см. шаг 6).
 -- Проект:      BFF (think-front)
 -- Автор:       sfobosde
 -- Дата:        2026-09-25
--- Выполнять:   вручную, после применения всех миграций. Скрипт
---              идемпотентен (ON CONFLICT DO NOTHING/DO UPDATE) —
---              безопасно гонять повторно при переезде на новое
---              окружение или после добавления новых ресурсов в
---              этот же файл, не нужно помнить порядок нескольких
---              отдельных скриптов.
+-- Выполнять:   автоматически, контуром миграций (deploy/migration/entrypoint.sh) —
+--              сразу после dotnet ef database update, на каждом деплое. Можно и
+--              вручную (см. Запуск) — идемпотентен (ON CONFLICT DO NOTHING/DO
+--              UPDATE, шаг 6 — по количеству участников admins), безопасно гонять
+--              повторно при переезде на новое окружение или после добавления
+--              новых ресурсов в этот же файл.
 -- Запуск:      psql -f 001_seed_initial_data.sql (или любой другой SQL-клиент —
 --              см. примечание про SEARCH_PATH ниже).
 -- ВНИМАНИЕ:    скрипт не выполнялся при разработке.
@@ -58,7 +60,9 @@ INSERT INTO resources (code, name) VALUES
     ('assigned_objects', 'Закреплённые объекты'),
     ('engineers',        'Инженеры и бригады'),
     ('presence',         'Присутствие'),
-    ('model_settings',   'Настройки модели (админ-панель)')
+    ('model_settings',   'Настройки модели (админ-панель)'),
+    ('notifications',    'Email-рассылки'),
+    ('readings',         'Показания датчиков (окно «Логи»)')
 ON CONFLICT (code) DO NOTHING;
 
 -- 3. Группе admins — полные права (маска 127 = все биты, включая manage) на КАЖДЫЙ
@@ -84,8 +88,33 @@ ON CONFLICT (ancestor_id, descendant_id) DO NOTHING;
 INSERT INTO rbac_version (id, value) VALUES (1, 1)
 ON CONFLICT (id) DO UPDATE SET value = rbac_version.value + 1;
 
+-- 6. Плейсхолдер-профиль первого администратора — только если в группе admins ещё
+-- совсем никого нет. Идемпотентность здесь проверяется по количеству участников
+-- группы, а НЕ по auth_user_id: после того как заглушку заменят на настоящий
+-- auth_user_id (см. ниже), строки с этим auth_user_id уже не будет, и наивная
+-- проверка ON CONFLICT (auth_user_id) DO NOTHING создала бы плейсхолдер заново на
+-- следующем деплое. Проверка по "участников ещё нет" такого не допускает: как
+-- только в admins появился хоть кто-то (этот плейсхолдер или настоящий человек),
+-- шаг больше никогда не сработает повторно.
+WITH admins_group AS (
+    SELECT id FROM groups WHERE code = 'admins'
+),
+new_admin AS (
+    INSERT INTO users (id, auth_user_id, first_name, last_name, is_active, created_at, updated_at)
+    SELECT gen_random_uuid(), '__bootstrap_admin__', 'Bootstrap', 'Admin', true, now(), now()
+    WHERE NOT EXISTS (
+        SELECT 1 FROM group_members gm JOIN admins_group ag ON gm.group_id = ag.id
+    )
+    RETURNING id
+)
+INSERT INTO group_members (group_id, member_type, member_id, created_at)
+SELECT ag.id, 1, new_admin.id, now()
+FROM admins_group ag, new_admin;
+
 COMMIT;
 
--- Первого администратора добавить вручную:
--- INSERT INTO group_members (group_id, member_type, member_id, created_at)
--- SELECT g.id, 1, '<user-uuid>', now() FROM groups g WHERE g.code = 'admins';
+-- После первого прогона на новом стенде: заменить заглушку auth_user_id у профиля
+-- на настоящий sub из auth (саму строку не удалять — иначе следующий деплой снова
+-- решит, что в admins никого нет, и создаст плейсхолдер заново):
+--   UPDATE users SET auth_user_id = '<sub из auth>', updated_at = now()
+--   WHERE auth_user_id = '__bootstrap_admin__';

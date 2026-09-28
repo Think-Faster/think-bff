@@ -42,6 +42,7 @@ public static class ApplicationServiceCollectionExtensions
         // D1 — topology
         services.AddScoped<IObjectService, ObjectService>();
         services.AddScoped<ISensorService, SensorService>();
+        services.AddScoped<IReadingsScopeService, ReadingsScopeService>();
 
         // D3 — predictions
         services.AddScoped<IPredictionService, PredictionService>();
@@ -52,6 +53,7 @@ public static class ApplicationServiceCollectionExtensions
 
         // D6 — additions
         services.AddScoped<IScheduleService, ScheduleService>();
+        services.AddScoped<IDutyService, DutyService>();
         services.AddScoped<IAssignedObjectService, AssignedObjectService>();
         services.AddScoped<IEngineerService, EngineerService>();
         services.Configure<PresenceOptions>(configuration.GetSection(PresenceOptions.SectionName));

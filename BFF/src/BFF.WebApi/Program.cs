@@ -4,6 +4,7 @@ using BFF.Application;
 using BFF.WebApi.Audit;
 using BFF.WebApi.Extensions;
 using BFF.WebApi.Middleware;
+using BFF.WebApi.Notifications;
 using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
@@ -28,6 +29,11 @@ builder.Services.AddBffAuthentication(builder.Configuration);
 builder.Services.AddBffAuthorization();
 builder.Services.AddBffCors(builder.Configuration);
 builder.Services.AddSingleton<AuditWriter>();
+builder.Services.AddSingleton<INoticePublisher, RabbitMqNoticePublisher>();
+builder.Services.AddSingleton<EmailRateLimiter>();
+builder.Services.AddScoped<EmailNotificationService>();
+builder.Services.AddScoped<FactNotifier>();
+builder.Services.AddHostedService<FactResultsConsumer>();
 
 builder.Services.AddControllers().AddJsonOptions(options =>
     // New domain entities (D1/D3/D4/D6/D8) expose their enums directly on DTOs instead of hand-rolled

@@ -11,6 +11,7 @@ public sealed class CreateUserRequestValidator : AbstractValidator<CreateUserReq
         RuleFor(x => x.LastName).NotEmpty().MaximumLength(200);
         RuleFor(x => x.FirstName).NotEmpty().MaximumLength(200);
         RuleFor(x => x.MiddleName).MaximumLength(200);
+        RuleFor(x => x.Email).EmailAddress().MaximumLength(320).When(x => !string.IsNullOrEmpty(x.Email));
         RuleForEach(x => x.GroupIds).NotEmpty().When(x => x.GroupIds is not null);
     }
 }

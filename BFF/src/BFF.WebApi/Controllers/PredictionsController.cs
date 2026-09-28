@@ -4,6 +4,7 @@ using BFF.Models.Constants;
 using BFF.Models.Enums;
 using BFF.WebApi.Authorization;
 using BFF.WebApi.Extensions;
+using BFF.WebApi.Notifications;
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 
@@ -70,10 +71,14 @@ public sealed class PredictionsController : ControllerBase
 
     [HttpPost("fact-alerts")]
     [RequirePermission(ResourceCodes.Predictions, PermissionFlags.Create)]
-    public async Task<IActionResult> CreateFactAlert([FromBody] CreateFactAlertRequest request, CancellationToken ct)
+    public async Task<IActionResult> CreateFactAlert(
+        [FromBody] CreateFactAlertRequest request, [FromServices] FactNotifier notifier, CancellationToken ct)
     {
         await _createFactAlertValidator.ValidateAndThrowAsync(request, ct);
         var result = await _predictionService.CreateFactAlertAsync(request, ct);
+        // Тот же путь, что у события модели из Kafka (FactResultsConsumer): кто на смене — письмо и Telegram.
+        var requestId = HttpContext.Request.Headers["X-Request-ID"].FirstOrDefault() ?? HttpContext.TraceIdentifier;
+        await notifier.NotifyAsync(result, new FactContext(RequestId: requestId), ct);
         return CreatedAtAction(nameof(ListFactAlerts), null, result);
     }
 }

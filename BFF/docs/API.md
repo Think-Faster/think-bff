@@ -46,15 +46,20 @@ location `/api/bff/` проксирует на `tf-bff:8080/` **с обрезк�
 ```json
 {
   "id": "...", "authUserId": "...",
-  "lastName": "Иванов", "firstName": "Иван", "middleName": "Иванович",
+  "lastName": "Иванов", "firstName": "Иван", "middleName": "Иванович", "email": "ivanov@example.com",
   "isActive": true,
   "groups": [ { "id": "...", "code": "analysts", "name": "Аналитики" } ]
 }
 ```
 
-**POST `/users`** — тело `{ authUserId, lastName, firstName, middleName?, groupIds?: [] }` → `201` + объект.
+`email` — необязательное поле (может быть `null`); нужно, чтобы на пользователя можно было отправить
+письмо через `POST /notifications/email` (см. выше) по `userId`, а не только по email напрямую.
 
-**PUT `/users/{id}`** — тело `{ lastName, firstName, middleName?, isActive }`. Состав групп не меняет.
+**POST `/users`** — тело `{ authUserId, lastName, firstName, middleName?, email?, groupIds?: [] }` →
+`201` + объект.
+
+**PUT `/users/{id}`** — тело `{ lastName, firstName, middleName?, email?, isActive }`. Состав групп не
+меняет.
 
 **DELETE `/users/{id}`** — `?soft=true` (по умолчанию) деактивирует (`is_active = false`); `?soft=false`
 удаляет пользователя целиком вместе с его членствами в группах и его грантами.
@@ -160,15 +165,23 @@ duplicate_code`.
 (TS-типы всех DTO + таблицы эндпоинтов `/objects`, `/sensors`, `/predictions`, `/fact-alerts`, `/tasks`,
 `/incidents`, `/users/{id}/schedule`, `/users/{id}/assigned-objects`, `/users/{id}/engineer-profile`,
 `/users/{id}/permits`, `/presence`, `/brigades`, `/model-versions`, `/coefficients`, `/retrain-jobs`,
-`/ignored-ranges`, `/work-schedule`). Базовый
+`/ignored-ranges`, `/work-schedule`, `/readings/scope`). Базовый
 контур `users`/`groups`/`permissions` — в парном документе,
 [`FRONTEND_INTEGRATION_GROUPS_USERS_PERMISSIONS.md`](FRONTEND_INTEGRATION_GROUPS_USERS_PERMISSIONS.md).
 Не дублирую здесь — таблиц много, а формат идентичен разделам выше (путь / право / тело / ответ).
 
 Новые коды ресурсов: `objects`, `sensors`, `predictions`, `tasks`, `incidents`, `schedule`,
-`assigned_objects`, `engineers`, `presence`, `model_settings` — регистрируются тем же единым
-`scripts/001_seed_initial_data.sql`, что и базовые `users`/`groups`/`permissions` (создан, не
-выполнялся).
+`assigned_objects`, `engineers`, `presence`, `model_settings`, `notifications`,
+`readings` — регистрируются тем же единым `scripts/001_seed_initial_data.sql`, что и базовые
+`users`/`groups`/`permissions` (применяется автоматически при деплое — см. README.md, раздел «Начальные данные»).
+
+## Email-рассылка — `POST /notifications/email`
+
+Право `notifications:create`. Публикует уведомление списку получателей (по `userId` или по email
+напрямую, можно смешивать) в RabbitMQ (`tf.notifications`, ключ `email`) с антиспам-лимитом 1 письмо на
+адрес в минуту через Redis; письмо реально отправляет отдельный сервис инфраструктуры (`tf-mail`) —
+доставка асинхронная, `200` значит «принято в обработку». Полное описание запроса/ответа и связанного
+нового поля `email` у `User` — [`FRONTEND_INTEGRATION_NOTIFICATIONS.md`](FRONTEND_INTEGRATION_NOTIFICATIONS.md).
 
 ## Доступные значения `permission`
 

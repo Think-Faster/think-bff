@@ -14,4 +14,8 @@ public interface IPredictionService
 
     Task<PagedResult<FactAlertDto>> ListFactAlertsAsync(int? objectId, int page, int pageSize, CancellationToken ct);
     Task<FactAlertDto> CreateFactAlertAsync(CreateFactAlertRequest request, CancellationToken ct);
+
+    /// <summary>Объявление по факту из tf.forecast.results: то же, что CreateFactAlertAsync, но повтор
+    /// (тот же объект, тип и начало эпизода) не создаёт второй записи — Created=false.</summary>
+    Task<(FactAlertDto Alert, bool Created)> RecordFactAlertAsync(CreateFactAlertRequest request, CancellationToken ct);
 }

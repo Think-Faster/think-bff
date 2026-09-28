@@ -159,6 +159,7 @@ interface UserDto {
   lastName: string;
   firstName: string;
   middleName: string | null;
+  email: string | null; // для POST /notifications/email по userId — см. FRONTEND_INTEGRATION_NOTIFICATIONS.md
   isActive: boolean;
   groups: GroupRefDto[]; // только группы первого уровня (без вложенности)
 }
@@ -169,6 +170,7 @@ interface UserListItemDto {
   lastName: string;
   firstName: string;
   middleName: string | null;
+  email: string | null;
   isActive: boolean;
 }
 
@@ -177,6 +179,7 @@ interface CreateUserRequest {
   lastName: string;
   firstName: string;
   middleName?: string | null;
+  email?: string | null;
   groupIds?: string[]; // опционально сразу включить в группы при создании
 }
 
@@ -184,6 +187,7 @@ interface UpdateUserRequest {
   lastName: string;
   firstName: string;
   middleName?: string | null;
+  email?: string | null;
   isActive: boolean;
   // groupIds сюда не входит — состав групп меняется отдельными эндпоинтами
 }
