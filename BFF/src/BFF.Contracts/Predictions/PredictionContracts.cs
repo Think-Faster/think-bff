@@ -86,6 +86,7 @@ public sealed class PredictionDecisionDto
     public string? ReasonCode { get; init; }
     public string? Comment { get; init; }
     public Guid? TaskId { get; init; }
+    public DateTimeOffset? MutedUntil { get; init; }
     public DateTimeOffset DecidedAt { get; init; }
 }
 
@@ -94,6 +95,13 @@ public sealed class CreatePredictionDecisionRequest
     public DecisionAction Action { get; init; }
     public string? ReasonCode { get; init; }
     public string? Comment { get; init; }
+
+    /// <summary>Take: прикрепить прогноз к уже открытой заявке (два типа на одном объекте — одна заявка,
+    /// домен §4.2). Пусто — BFF заводит новую заявку и отдаёт её id в TaskId решения.</summary>
+    public Guid? TaskId { get; init; }
+
+    /// <summary>Mute: до какого времени молчит пара объект-тип (ML/INTEGRATION.md §13.3) — обязателен.</summary>
+    public DateTimeOffset? Until { get; init; }
 }
 
 public sealed class FactAlertDto

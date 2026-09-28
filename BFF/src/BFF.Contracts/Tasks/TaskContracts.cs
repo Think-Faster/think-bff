@@ -125,6 +125,12 @@ public sealed class TaskReturnDto
     public DateTimeOffset ReturnedAt { get; init; }
 }
 
+/// <summary>Переход без данных — начать работу, закрыть, отменить; комментарий дописывается к заявке.</summary>
+public sealed class TaskTransitionRequest
+{
+    public string? Comment { get; init; }
+}
+
 public sealed class CreateTaskReturnRequest
 {
     public string TargetType { get; init; } = string.Empty;

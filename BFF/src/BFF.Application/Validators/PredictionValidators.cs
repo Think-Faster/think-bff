@@ -26,6 +26,23 @@ public sealed class CreatePredictionDecisionRequestValidator : AbstractValidator
             .NotEmpty()
             .When(x => x.Action == DecisionAction.Reject)
             .WithMessage("reasonCode is required when rejecting a prediction.");
+        RuleFor(x => x.ReasonCode).MaximumLength(50);
+
+        // Справочник причин: «другое» — только с комментарием.
+        RuleFor(x => x.Comment)
+            .NotEmpty()
+            .When(x => x.Action == DecisionAction.Reject && x.ReasonCode == "other")
+            .WithMessage("comment is required when the reason is 'other'.");
+
+        // Модель без срока молчание не примет (ML/INTEGRATION.md §13.3).
+        RuleFor(x => x.Until)
+            .NotNull()
+            .When(x => x.Action == DecisionAction.Mute)
+            .WithMessage("until is required when muting a prediction.");
+        RuleFor(x => x.Until)
+            .Must(until => until > DateTimeOffset.UtcNow.AddHours(1))
+            .When(x => x.Action == DecisionAction.Mute && x.Until is not null)
+            .WithMessage("until must be at least an hour ahead.");
     }
 }
 
