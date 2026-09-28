@@ -19,6 +19,7 @@ public sealed class PredictionDecisionConfiguration : IEntityTypeConfiguration<P
         builder.Property(d => d.ReasonCode).HasColumnName("reason_code");
         builder.Property(d => d.Comment).HasColumnName("comment");
         builder.Property(d => d.TaskId).HasColumnName("task_id");
+        builder.Property(d => d.MutedUntil).HasColumnName("muted_until");
         builder.Property(d => d.DecidedAt).HasColumnName("decided_at");
 
         builder.HasOne<Prediction>().WithMany().HasForeignKey(d => d.PredictionId)

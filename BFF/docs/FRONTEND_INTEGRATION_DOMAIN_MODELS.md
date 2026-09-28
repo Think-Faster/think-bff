@@ -194,14 +194,17 @@ interface PredictionDecisionDto {
   action: DecisionAction;
   reasonCode: string | null;
   comment: string | null;
-  taskId: string | null;
+  taskId: string | null;      // take: заявка, которую завёл BFF или к которой прикрепил прогноз
+  mutedUntil: string | null;  // mute: до какого времени молчит пара объект-тип
   decidedAt: string;
 }
 
 interface CreatePredictionDecisionRequest {
   action: DecisionAction;
-  reasonCode?: string | null; // обязателен при action === "reject"
+  reasonCode?: string | null; // обязателен при action === "reject"; "other" — только с comment
   comment?: string | null;
+  taskId?: string | null;     // take: прикрепить к уже открытой заявке того же объекта; пусто — новая заявка
+  until?: string | null;      // обязателен при action === "mute", не раньше чем через час
 }
 
 interface FactAlertDto {
@@ -513,7 +516,7 @@ interface WorkScheduleEntryDto {
 | GET | `/predictions?objectId=&status=&page=&pageSize=` | `predictions:read` | `PagedResult<PredictionListItemDto>` |
 | GET | `/predictions/{id}` | `predictions:read` | `PredictionDto` (с `factors`/`evidence`) |
 | POST | `/predictions` | `predictions:create` | `201` + `PredictionDto`. Дедуп по `(objectId, type, hourEnd, modelVersionId)` — повтор вернёт уже существующий, не создаст дубль |
-| POST | `/predictions/{id}/decisions` | `predictions:update` | `200` + `PredictionDecisionDto`. Меняет `status` прогноза (`take`→`taken`, `reject`→`rejected`, `mute`→`muted`, `reopen`→`inReview`) |
+| POST | `/predictions/{id}/decisions` | `predictions:update` | `200` + `PredictionDecisionDto`. Меняет `status` прогноза (`take`→`taken`, `reject`→`rejected`, `mute`→`muted`, `reopen`→`inReview`). `take`/`reject`/`mute` — только из `new`/`inReview`, иначе `409 prediction_already_decided`; `reopen` — только из `taken`/`rejected`/`muted`, иначе `409 invalid_status`. `take` сам заводит заявку (`inWork`, диспетчер — вы) и возвращает её id в `taskId`. Решение уходит в модель (`tf.model.commands`, ML/INTEGRATION.md §13.3) |
 | GET | `/fact-alerts?objectId=&page=&pageSize=` | `predictions:read` | `PagedResult<FactAlertDto>` |
 | POST | `/fact-alerts` | `predictions:create` | `201` + `FactAlertDto` |
 
@@ -528,9 +531,14 @@ interface WorkScheduleEntryDto {
 | POST | `/tasks/{id}/take` | `tasks:update` | «кто первый взял — тот ведёт»: `200` + `WorkTaskDto`, либо `409 task_already_taken`, если кто-то успел раньше — **обязательно обработай этот код отдельно от прочих 409** (не ошибка данных, а гонка) |
 | POST | `/tasks/{id}/predictions` | `tasks:update` | тело `{ predictionId, isPrimary }` — прикрепить прогноз как основание, `201` |
 | DELETE | `/tasks/{id}/predictions/{predictionId}` | `tasks:update` | открепить (запись остаётся в истории с `detachedAt`) — `204` |
-| POST | `/tasks/{id}/assignments` | `tasks:update` | тело `{ engineerId, comment? }` — `201` + `TaskAssignmentDto` |
-| POST | `/tasks/{id}/reports` | `tasks:update` | тело `CreateTaskReportRequest`-подобное (`actualState?`, `worksDone?`, `resultCode`, `comment?`) — `201` + `TaskReportDto`, заявка переходит в `completed` |
-| POST | `/tasks/{id}/returns` | `tasks:update` | тело `{ targetType, targetUserId?, comment? }` — `201` + `TaskReturnDto`, заявка переходит в `returnedToWork` |
+| POST | `/tasks/{id}/assignments` | `tasks:update` | тело `{ engineerId, comment? }` — `201` + `TaskAssignmentDto`, заявка переходит в `assigned`. Из `new`/`inWork`/`assigned`/`engineerWorking`/`returnedToWork`; прежнее назначение получает статус `replaced` |
+| POST | `/tasks/{id}/start` | `tasks:update` | тело `{ comment? }` (можно пустое) — инженер приступил: `assigned`/`returnedToWork` → `engineerWorking`, `200` + `WorkTaskDto` |
+| POST | `/tasks/{id}/reports` | `tasks:update` | тело `CreateTaskReportRequest`-подобное (`actualState?`, `worksDone?`, `resultCode`, `comment?`) — `201` + `TaskReportDto`, заявка переходит в `completed`. Только при назначенном инженере, из `assigned`/`engineerWorking`/`returnedToWork` |
+| POST | `/tasks/{id}/close` | `tasks:update` | тело `{ comment? }` — отчёт принят: `completed` → `closed`, прикреплённые прогнозы → `closed`. `200` + `WorkTaskDto` |
+| POST | `/tasks/{id}/cancel` | `tasks:update` | тело `{ comment? }` — отмена из любого активного статуса → `cancelled`, прикреплённые прогнозы → `closed`. `200` + `WorkTaskDto` |
+| POST | `/tasks/{id}/returns` | `tasks:update` | тело `{ targetType, targetUserId?, comment? }` — `201` + `TaskReturnDto`. `queue` → заявка снова `new` без диспетчера (её можно взять); `dispatcher` → `returnedToWork` у `targetUserId` (обязателен); `incident` → `returnedToWork` у того же диспетчера. Из активных статусов и `completed` |
+
+Переход из неподходящего статуса — `409 invalid_status`.
 
 ### Происшествия
 

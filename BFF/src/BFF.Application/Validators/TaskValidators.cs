@@ -51,5 +51,15 @@ public sealed class CreateTaskReturnRequestValidator : AbstractValidator<CreateT
     {
         RuleFor(x => x.TargetType).NotEmpty().Must(t => t is "dispatcher" or "queue" or "incident")
             .WithMessage("targetType must be 'dispatcher', 'queue' or 'incident'.");
+        RuleFor(x => x.TargetUserId).NotEmpty().When(x => x.TargetType == "dispatcher")
+            .WithMessage("targetUserId is required when returning to a dispatcher.");
+    }
+}
+
+public sealed class TaskTransitionRequestValidator : AbstractValidator<TaskTransitionRequest>
+{
+    public TaskTransitionRequestValidator()
+    {
+        RuleFor(x => x.Comment).MaximumLength(2000);
     }
 }

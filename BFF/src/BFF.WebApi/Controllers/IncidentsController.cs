@@ -4,6 +4,7 @@ using BFF.Models.Constants;
 using BFF.Models.Enums;
 using BFF.WebApi.Authorization;
 using BFF.WebApi.Extensions;
+using BFF.WebApi.Notifications;
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 
@@ -48,10 +49,15 @@ public sealed class IncidentsController : ControllerBase
 
     [HttpPost("{id:guid}/confirm")]
     [RequirePermission(ResourceCodes.Incidents, PermissionFlags.Update)]
-    public async Task<IActionResult> Confirm(Guid id, [FromBody] ConfirmIncidentRequest request, CancellationToken ct)
+    public async Task<IActionResult> Confirm(
+        Guid id, [FromBody] ConfirmIncidentRequest request, [FromServices] ModelDecisionRelay relay,
+        CancellationToken ct)
     {
         await _confirmValidator.ValidateAndThrowAsync(request, ct);
         var currentUser = HttpContext.GetCurrentUser()!;
-        return Ok(await _incidentService.ConfirmAsync(id, currentUser.UserId, request, ct));
+        var result = await _incidentService.ConfirmAsync(id, currentUser.UserId, request, ct);
+        // Метка «происшествие было» — модель по ней проверяет свои отклонения (§9.2).
+        await relay.ConfirmedAsync(HttpContext, result, ct);
+        return Ok(result);
     }
 }

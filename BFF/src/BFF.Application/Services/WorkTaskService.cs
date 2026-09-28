@@ -184,8 +184,17 @@ public sealed class WorkTaskService : IWorkTaskService
 
     public async Task<TaskAssignmentDto> AssignAsync(Guid id, Guid assignedBy, CreateTaskAssignmentRequest request, CancellationToken ct)
     {
-        var task = await _context.Tasks.SingleOrDefaultAsync(t => t.Id == id, ct)
-            ?? throw new NotFoundException($"Task {id} not found.");
+        var task = await LoadAsync(id, ct);
+        EnsureStatus(task, "assign", WorkTaskStatus.New, WorkTaskStatus.InWork, WorkTaskStatus.Assigned,
+            WorkTaskStatus.EngineerWorking, WorkTaskStatus.ReturnedToWork);
+
+        // Переназначение: прежний исполнитель снят, в истории остаётся.
+        var previous = await _context.TaskAssignments
+            .Where(a => a.TaskId == id && a.Status == AssignmentAssigned).ToListAsync(ct);
+        foreach (var old in previous)
+        {
+            old.Status = AssignmentReplaced;
+        }
 
         var assignment = new TaskAssignment
         {
@@ -194,17 +203,21 @@ public sealed class WorkTaskService : IWorkTaskService
             EngineerId = request.EngineerId,
             AssignedBy = assignedBy,
             AssignedAt = DateTimeOffset.UtcNow,
-            Status = "assigned",
+            Status = AssignmentAssigned,
             Comment = request.Comment,
         };
 
         _context.TaskAssignments.Add(assignment);
 
-        if (task.Status is WorkTaskStatus.New or WorkTaskStatus.InWork)
+        // Назначил из общей очереди — заявка теперь его.
+        if (task.DispatcherId is null)
         {
-            task.Status = WorkTaskStatus.Assigned;
-            task.AssignedAt = DateTimeOffset.UtcNow;
+            task.DispatcherId = assignedBy;
+            task.TakenAt ??= DateTimeOffset.UtcNow;
         }
+
+        task.Status = WorkTaskStatus.Assigned;
+        task.AssignedAt = DateTimeOffset.UtcNow;
 
         await _context.SaveChangesAsync(ct);
         return ToDto(assignment);
@@ -212,8 +225,16 @@ public sealed class WorkTaskService : IWorkTaskService
 
     public async Task<TaskReportDto> AddReportAsync(Guid id, Guid engineerId, CreateTaskReportRequest request, CancellationToken ct)
     {
-        var task = await _context.Tasks.SingleOrDefaultAsync(t => t.Id == id, ct)
-            ?? throw new NotFoundException($"Task {id} not found.");
+        var task = await LoadAsync(id, ct);
+        EnsureStatus(task, "report", WorkTaskStatus.Assigned, WorkTaskStatus.EngineerWorking,
+            WorkTaskStatus.ReturnedToWork);
+
+        var hasEngineer = await _context.TaskAssignments.AsNoTracking()
+            .AnyAsync(a => a.TaskId == id && a.Status == AssignmentAssigned, ct);
+        if (!hasEngineer)
+        {
+            throw new ConflictException($"Task {id} has no assigned engineer to report.", "invalid_status");
+        }
 
         var report = new TaskReport
         {
@@ -237,8 +258,9 @@ public sealed class WorkTaskService : IWorkTaskService
 
     public async Task<TaskReturnDto> ReturnAsync(Guid id, Guid returnedBy, CreateTaskReturnRequest request, CancellationToken ct)
     {
-        var task = await _context.Tasks.SingleOrDefaultAsync(t => t.Id == id, ct)
-            ?? throw new NotFoundException($"Task {id} not found.");
+        var task = await LoadAsync(id, ct);
+        EnsureStatus(task, "return", WorkTaskStatus.InWork, WorkTaskStatus.Assigned,
+            WorkTaskStatus.EngineerWorking, WorkTaskStatus.Completed, WorkTaskStatus.ReturnedToWork);
 
         var taskReturn = new TaskReturn
         {
@@ -252,11 +274,113 @@ public sealed class WorkTaskService : IWorkTaskService
         };
 
         _context.TaskReturns.Add(taskReturn);
-        task.Status = WorkTaskStatus.ReturnedToWork;
-        task.DispatcherId = request.TargetUserId;
+
+        switch (request.TargetType)
+        {
+            case "queue":
+                // В общую очередь: снова New без хозяина — её возьмёт первый (take только из New).
+                task.Status = WorkTaskStatus.New;
+                task.DispatcherId = null;
+                task.TakenAt = null;
+                break;
+            case "dispatcher":
+                task.Status = WorkTaskStatus.ReturnedToWork;
+                task.DispatcherId = request.TargetUserId;
+                break;
+            default:
+                // "incident" — доработка тем же диспетчером.
+                task.Status = WorkTaskStatus.ReturnedToWork;
+                break;
+        }
+
+        task.CompletedAt = null;
 
         await _context.SaveChangesAsync(ct);
         return ToDto(taskReturn);
+    }
+
+    public async Task<WorkTaskDto> StartAsync(Guid id, TaskTransitionRequest request, CancellationToken ct)
+    {
+        var task = await LoadAsync(id, ct);
+        EnsureStatus(task, "start", WorkTaskStatus.Assigned, WorkTaskStatus.ReturnedToWork);
+
+        var hasEngineer = await _context.TaskAssignments.AsNoTracking()
+            .AnyAsync(a => a.TaskId == id && a.Status == AssignmentAssigned, ct);
+        if (!hasEngineer)
+        {
+            throw new ConflictException($"Task {id} has no assigned engineer.", "invalid_status");
+        }
+
+        task.Status = WorkTaskStatus.EngineerWorking;
+        AppendComment(task, request.Comment);
+        await _context.SaveChangesAsync(ct);
+        return await GetAsync(id, ct);
+    }
+
+    public async Task<WorkTaskDto> CloseAsync(Guid id, TaskTransitionRequest request, CancellationToken ct)
+    {
+        var task = await LoadAsync(id, ct);
+        EnsureStatus(task, "close", WorkTaskStatus.Completed);
+
+        task.Status = WorkTaskStatus.Closed;
+        task.ClosedAt = DateTimeOffset.UtcNow;
+        AppendComment(task, request.Comment);
+        await CloseAttachedPredictionsAsync(id, ct);
+        await _context.SaveChangesAsync(ct);
+        return await GetAsync(id, ct);
+    }
+
+    public async Task<WorkTaskDto> CancelAsync(Guid id, TaskTransitionRequest request, CancellationToken ct)
+    {
+        var task = await LoadAsync(id, ct);
+        EnsureStatus(task, "cancel", WorkTaskStatus.New, WorkTaskStatus.InWork, WorkTaskStatus.Assigned,
+            WorkTaskStatus.EngineerWorking, WorkTaskStatus.ReturnedToWork);
+
+        task.Status = WorkTaskStatus.Cancelled;
+        task.ClosedAt = DateTimeOffset.UtcNow;
+        AppendComment(task, request.Comment);
+        await CloseAttachedPredictionsAsync(id, ct);
+        await _context.SaveChangesAsync(ct);
+        return await GetAsync(id, ct);
+    }
+
+    private const string AssignmentAssigned = "assigned";
+    private const string AssignmentReplaced = "replaced";
+
+    private async Task<WorkTask> LoadAsync(Guid id, CancellationToken ct)
+        => await _context.Tasks.SingleOrDefaultAsync(t => t.Id == id, ct)
+            ?? throw new NotFoundException($"Task {id} not found.");
+
+    private static void EnsureStatus(WorkTask task, string action, params WorkTaskStatus[] allowed)
+    {
+        if (!allowed.Contains(task.Status))
+        {
+            throw new ConflictException(
+                $"Task {task.Id} is {task.Status}; '{action}' is not allowed.", "invalid_status");
+        }
+    }
+
+    private static void AppendComment(WorkTask task, string? comment)
+    {
+        if (string.IsNullOrWhiteSpace(comment))
+        {
+            return;
+        }
+
+        task.Comment = string.IsNullOrWhiteSpace(task.Comment) ? comment.Trim() : $"{task.Comment}\n{comment.Trim()}";
+    }
+
+    /// <summary>Заявка закрыта — взятые по ней прогнозы тоже (статус Closed), чтобы не висели в работе.</summary>
+    private async Task CloseAttachedPredictionsAsync(Guid taskId, CancellationToken ct)
+    {
+        var predictionIds = _context.TaskPredictions
+            .Where(tp => tp.TaskId == taskId && tp.DetachedAt == null).Select(tp => tp.PredictionId);
+        var predictions = await _context.Predictions
+            .Where(p => predictionIds.Contains(p.Id) && p.Status == PredictionStatus.Taken).ToListAsync(ct);
+        foreach (var prediction in predictions)
+        {
+            prediction.Status = PredictionStatus.Closed;
+        }
     }
 
     private static WorkTaskDto ToDto(
