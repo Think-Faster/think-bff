@@ -126,7 +126,8 @@ system_group_protected`. Иначе удаляет группу, все её р�
 | POST | `/resources` | `permissions:manage` |
 
 **GET `/permissions/me`** — эффективные права текущего пользователя (личные + права всех групп, в
-которых он состоит, прямо или транзитивно):
+которых он состоит, прямо или транзитивно) и коды этих групп (`groups`: прямые и родительские —
+бригада внутри `engineers` даёт оба кода):
 
 ```json
 {
@@ -134,9 +135,13 @@ system_group_protected`. Иначе удаляет группу, все её р�
   "permissions": {
     "users": ["read"],
     "documents": ["create", "read", "update", "export"]
-  }
+  },
+  "groups": ["engineers", "brigade-1"]
 }
 ```
+
+Роли — это группы: раздел инженера фронт показывает по `engineers` (как `/tasks/assignees?role=engineers`),
+а не по праву — у admins есть все права, но инженерами они от этого не становятся.
 
 **GET `/permissions/check?resource=documents&permission=update`** — точечная проверка для UI (показать/
 скрыть элемент): `{ "allowed": true }`.

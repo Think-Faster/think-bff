@@ -248,6 +248,7 @@ type PrincipalType = "user" | "group";
 interface MyPermissionsResponse {
   userId: string;
   permissions: Record<string, PermissionName[]>; // код ресурса -> список прав
+  groups: string[]; // коды групп пользователя: прямые и родительские (роли — это группы)
 }
 
 interface CheckPermissionResponse {

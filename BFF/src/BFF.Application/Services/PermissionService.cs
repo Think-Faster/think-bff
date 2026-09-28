@@ -26,7 +26,20 @@ public sealed class PermissionService : IPermissionService
             kv => kv.Key,
             kv => (IReadOnlyList<string>)kv.Value.ToNames());
 
-        return new MyPermissionsResponse { UserId = userId, Permissions = dict };
+        var directGroups = _context.GroupMembers
+            .Where(m => m.MemberType == MemberType.User && m.MemberId == userId)
+            .Select(m => m.GroupId);
+        var ancestors = _context.GroupClosures
+            .Where(c => directGroups.Contains(c.DescendantId))
+            .Select(c => c.AncestorId);
+        var groups = await _context.Groups.AsNoTracking()
+            .Where(g => ancestors.Contains(g.Id))
+            .Select(g => g.Code)
+            .Distinct()
+            .OrderBy(code => code)
+            .ToListAsync(ct);
+
+        return new MyPermissionsResponse { UserId = userId, Permissions = dict, Groups = groups };
     }
 
     public async Task<bool> CheckAsync(Guid userId, string resourceCode, string permission, CancellationToken ct)
