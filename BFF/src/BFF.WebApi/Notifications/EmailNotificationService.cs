@@ -21,13 +21,13 @@ public sealed class EmailNotificationService
 
     private readonly IUserService _userService;
     private readonly INoticePublisher _publisher;
-    private readonly EmailRateLimiter _rateLimiter;
+    private readonly NotificationRateLimiter _rateLimiter;
     private readonly ILogger<EmailNotificationService> _logger;
 
     public EmailNotificationService(
         IUserService userService,
         INoticePublisher publisher,
-        EmailRateLimiter rateLimiter,
+        NotificationRateLimiter rateLimiter,
         ILogger<EmailNotificationService> logger)
     {
         _userService = userService;
@@ -86,7 +86,7 @@ public sealed class EmailNotificationService
 
         foreach (var (email, userId) in pending)
         {
-            if (!await _rateLimiter.TryAcquireAsync(email, ct))
+            if (!await _rateLimiter.TryAcquireEmailAsync(email, ct))
             {
                 results.Add(new EmailRecipientResultDto { Email = email, UserId = userId, Status = EmailSendStatus.RateLimited });
                 continue;

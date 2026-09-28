@@ -40,6 +40,8 @@ location `/api/bff/` проксирует на `tf-bff:8080/` **с обрезк�
 | DELETE | `/users/{id}?soft=true` | `users:delete` |
 | POST | `/users/{id}/groups` | `users:update` |
 | DELETE | `/users/{id}/groups/{groupId}` | `users:update` |
+| GET | `/users/me/telegram` | любой вошедший |
+| PUT | `/users/me/telegram` | любой вошедший |
 
 **GET `/users/{id}`** — данные пользователя плюс группы **первого уровня** (без учёта вложенности):
 
@@ -47,6 +49,7 @@ location `/api/bff/` проксирует на `tf-bff:8080/` **с обрезк�
 {
   "id": "...", "authUserId": "...",
   "lastName": "Иванов", "firstName": "Иван", "middleName": "Иванович", "email": "ivanov@example.com",
+  "telegram": "ivan_petrov",
   "isActive": true,
   "groups": [ { "id": "...", "code": "analysts", "name": "Аналитики" } ]
 }
@@ -55,11 +58,22 @@ location `/api/bff/` проксирует на `tf-bff:8080/` **с обрезк�
 `email` — необязательное поле (может быть `null`); нужно, чтобы на пользователя можно было отправить
 письмо через `POST /notifications/email` (см. выше) по `userId`, а не только по email напрямую.
 
-**POST `/users`** — тело `{ authUserId, lastName, firstName, middleName?, email?, groupIds?: [] }` →
-`201` + объект.
+`telegram` — необязательное имя в Telegram, хранится без `@` и в нижнем регистре (5–32 символа:
+латиница, цифры, `_`, начинается с буквы; на входе `@` можно). По нему бот шлёт уведомления —
+`POST /notifications/telegram` и рассылка «по факту», но только после того, как человек сам нажал
+«Старт» у бота: первым бот написать не может.
 
-**PUT `/users/{id}`** — тело `{ lastName, firstName, middleName?, email?, isActive }`. Состав групп не
-меняет.
+**POST `/users`** — тело `{ authUserId, lastName, firstName, middleName?, email?, telegram?, groupIds?: [] }`
+→ `201` + объект.
+
+**PUT `/users/{id}`** — тело `{ lastName, firstName, middleName?, email?, telegram?, isActive }`. Состав
+групп не меняет. `telegram`: `null` или нет поля — не менять, `""` — убрать.
+
+**GET/PUT `/users/me/telegram`** — своё имя в Telegram для профиля, без права на раздел пользователей.
+PUT — тело `{ "username": "@ivan_petrov" }` (`null`/`""` — убрать). Ответ обоих:
+`{ "username": "ivan_petrov" | null, "linked": true | false | null, "bot": "thinkfaster_bot" | null }`.
+`linked` — человек нажал «Старт» у бота под этим именем (связь хранит tf-tg в Redis), `null` —
+неизвестно (Redis недоступен). `bot` — имя бота для ссылки `https://t.me/<bot>`.
 
 **DELETE `/users/{id}`** — `?soft=true` (по умолчанию) деактивирует (`is_active = false`); `?soft=false`
 удаляет пользователя целиком вместе с его членствами в группах и его грантами.
@@ -187,6 +201,13 @@ duplicate_code`.
 адрес в минуту через Redis; письмо реально отправляет отдельный сервис инфраструктуры (`tf-mail`) —
 доставка асинхронная, `200` значит «принято в обработку». Полное описание запроса/ответа и связанного
 нового поля `email` у `User` — [`FRONTEND_INTEGRATION_NOTIFICATIONS.md`](FRONTEND_INTEGRATION_NOTIFICATIONS.md).
+
+## Telegram — `POST /notifications/telegram`
+
+Право то же, `notifications:create`. Получатели — только `userIds`: сообщение уходит от бота по
+`users.telegram` одним сообщением `tf.notifications` (ключ `telegram`, `to.usernames`), tf-tg шлёт каждому
+личное. Лимит — одно сообщение на имя в минуту. Кто не подключил бота — `notLinked`, в очередь не
+ставится. Подробно — там же, в [`FRONTEND_INTEGRATION_NOTIFICATIONS.md`](FRONTEND_INTEGRATION_NOTIFICATIONS.md).
 
 ## Доступные значения `permission`
 

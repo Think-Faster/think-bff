@@ -42,6 +42,7 @@ public sealed class AuditMiddleware
         [("POST", "ignored-ranges")] = new("model.muted", "ignored_range"),
         [("DELETE", "ignored-ranges/{id:guid}")] = new("model.unmuted", "ignored_range"),
         [("POST", "notifications/email")] = new("notification.email_sent", "notification", "subject"),
+        [("POST", "notifications/telegram")] = new("notification.telegram_sent", "notification", "subject"),
     };
 
     private readonly RequestDelegate _next;
