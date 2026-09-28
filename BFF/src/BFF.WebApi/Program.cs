@@ -32,6 +32,7 @@ builder.Services.AddSingleton<AuditWriter>();
 builder.Services.AddSingleton<INoticePublisher, RabbitMqNoticePublisher>();
 builder.Services.AddSingleton<IModelCommandPublisher, RabbitMqModelCommandPublisher>();
 builder.Services.AddScoped<ModelDecisionRelay>();
+builder.Services.AddScoped<ModelSettingsRelay>();
 builder.Services.AddSingleton<EmailRateLimiter>();
 builder.Services.AddScoped<EmailNotificationService>();
 builder.Services.AddScoped<FactNotifier>();

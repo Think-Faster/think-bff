@@ -608,6 +608,19 @@ interface WorkScheduleEntryDto {
 Все ручки — под правом `model_settings` (`read` для GET, `manage` для любых изменений — единый уровень,
 без отдельных `create`/`update`/`delete`, как и у `permissions`).
 
+**Команды модели.** Версию типа, рабочие доли и игнорируемые периоды хранит модель. Читать их — из
+`GET /api/ml/status` (`model.types`, `settings`, `settings_bounds`, `gaps`, `retrain`), менять — ручками
+ниже. Ответ `202 { commandId, kind }` значит «команда в очереди модели». Применилась ли она, видно по
+номеру версии в следующем `/status`. Брокер недоступен — `503 model_commands_unavailable`.
+
+| Метод | Путь | Право | Тело |
+| --- | --- | --- | --- |
+| POST | `/model-commands/switch` | `model_settings:manage` | `{ type, versionId, reason }` — `type` из `fire, gas, flood, equipment, sensor, intrusion`, `versionId: null` — основная выгрузка |
+| POST | `/model-commands/operating` | `model_settings:manage` | `{ version, reason, types: { <тип>: { share, rejectK } } }` — все 6 типов, `version` = `settings.version + 1`, границы долей — `settings_bounds` |
+| POST | `/model-commands/gaps` | `model_settings:manage` | `{ version, reason, rows: [{ a, b, comment }] }` — вся таблица, `a`/`b` — `ГГГГ-ММ-ДД ЧЧ:ММ` по Москве, `version` = `gaps.version + 1`; модель ставит признак переобучения |
+
+Ручки ниже пишут только в базу BFF: в модель они не уходят и фронтом не используются.
+
 | Метод | Путь | Право | Ответ |
 | --- | --- | --- | --- |
 | GET | `/model-versions` | `model_settings:read` | `ModelVersionDto[]` |

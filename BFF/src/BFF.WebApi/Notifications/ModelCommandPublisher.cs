@@ -1,16 +1,29 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using BFF.Models.Enums;
+using BFF.WebApi.Extensions;
 using RabbitMQ.Client;
 
 namespace BFF.WebApi.Notifications;
 
 /// <summary>Кто отдал команду: sub — id учётки в tf-auth, login — из токена, если есть.</summary>
-public sealed record CommandIssuer(string Sub, string? Login);
+public sealed record CommandIssuer(string Sub, string? Login)
+{
+    public static CommandIssuer From(HttpContext http)
+    {
+        var user = http.GetCurrentUser();
+        return new CommandIssuer(user?.AuthUserId ?? string.Empty, http.User.FindFirst("login")?.Value);
+    }
+
+    /// <summary>request_id конверта — тот же, что в журнале BFF.</summary>
+    public static string RequestId(HttpContext http)
+        => http.Request.Headers["X-Request-ID"].FirstOrDefault() ?? http.TraceIdentifier;
+}
 
 /// <summary>
 /// Команды модели в exchange tf.model.commands (Think-Faster ML/INTEGRATION.md §13.3): решения диспетчера
-/// по прогнозу (decision.take / reject / mute / reopen) и подтверждённое происшествие (decision.confirmed).
+/// по прогнозу (decision.take / reject / mute / reopen), подтверждённое происшествие (decision.confirmed) и
+/// команды админ-панели модели (model.switch, settings.operating, settings.gaps).
 /// Ключ маршрута — вид команды, command_id — id решения: повтор модель подтвердит без действия.
 /// Топологию заводит think-infra (rabbitmq/definitions.json, право записи у tf-bff) — здесь не объявляется.
 /// </summary>

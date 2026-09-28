@@ -15,6 +15,10 @@ public static class PredictionTypeExtensions
         ["blind"] = PredictionType.Blind,
     };
 
+    /// <summary>Прогнозные типы модели (§2.3): у них рабочие доли, версии и порог; temperature и blind — только факт (§13.11).</summary>
+    public static readonly IReadOnlyList<string> ForecastModelNames =
+        ["fire", "gas", "flood", "equipment", "sensor", "intrusion"];
+
     /// <summary>Имя типа в модели (fire, gas, flood, equipment, sensor, intrusion, temperature, blind).</summary>
     public static string ToModelString(this PredictionType type) =>
         ByModelName.FirstOrDefault(p => p.Value == type).Key ?? type.ToString().ToLowerInvariant();
