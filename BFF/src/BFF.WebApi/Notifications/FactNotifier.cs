@@ -133,21 +133,30 @@ public sealed class FactNotifier
             place = $"объект {alert.ObjectId}";
         }
 
-        var type = TypeName(alert.Type);
+        var type = alert.Type.Label();
+        var group = alert.Group.Label();
         var started = alert.StartedAt.ToOffset(Msk).ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture);
         var lines = new List<string>
         {
-            $"Происшествие по факту: {type.ToLowerInvariant()}.",
+            $"{group} по факту: {type.ToLowerInvariant()}.",
             $"Объект: {place}.",
             $"Началось: {started} МСК.",
         };
+        // Слепой объект не даёт показаний — за потерей связи или питания может стоять авария (§13.11).
+        if (alert.Type == PredictionType.Blind)
+        {
+            lines.Add("Объект не видно — возможна авария.");
+        }
         if (!string.IsNullOrWhiteSpace(context.Note))
         {
             lines.Add(context.WorkId is { } work ? $"{context.Note} (работа {work})." : $"{context.Note}.");
         }
 
         lines.Add($"Заявка по факту: {alert.Id}.");
-        return ($"{type}: {place}", string.Join('\n', lines));
+        var subject = alert.Type == PredictionType.Blind
+            ? $"{group}, возможна авария — {type.ToLowerInvariant()}: {place}"
+            : $"{group} — {type.ToLowerInvariant()}: {place}";
+        return (subject, string.Join('\n', lines));
     }
 
     // chat_id — целое число (у групп отрицательное) или "@канал". Имя пользователя (@login) Bot API
@@ -166,15 +175,4 @@ public sealed class FactNotifier
 
         return telegram.StartsWith('@') && telegram.Length > 1 ? telegram : null;
     }
-
-    private static string TypeName(PredictionType type) => type switch
-    {
-        PredictionType.Fire => "Пожар",
-        PredictionType.Gas => "Загазованность",
-        PredictionType.Flood => "Подтопление",
-        PredictionType.EquipmentFailure => "Отказ оборудования",
-        PredictionType.SensorFailure => "Отказ датчика",
-        PredictionType.Intrusion => "Проникновение",
-        _ => type.ToString(),
-    };
 }

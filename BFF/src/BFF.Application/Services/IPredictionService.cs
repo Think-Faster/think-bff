@@ -18,10 +18,15 @@ public interface IPredictionService
 
     Task<PredictionDecisionDto> DecideAsync(Guid predictionId, Guid userId, CreatePredictionDecisionRequest request, CancellationToken ct);
 
-    Task<PagedResult<FactAlertDto>> ListFactAlertsAsync(int? objectId, int page, int pageSize, CancellationToken ct);
+    /// <summary>live=true — только живые эпизоды (FactAlertLiveness), false — только прошедшие.</summary>
+    Task<PagedResult<FactAlertDto>> ListFactAlertsAsync(int? objectId, bool? live, int page, int pageSize, CancellationToken ct);
     Task<FactAlertDto> CreateFactAlertAsync(CreateFactAlertRequest request, CancellationToken ct);
 
-    /// <summary>Объявление по факту из tf.forecast.results: то же, что CreateFactAlertAsync, но повтор
-    /// (тот же объект, тип и начало эпизода) не создаёт второй записи — Created=false.</summary>
-    Task<(FactAlertDto Alert, bool Created)> RecordFactAlertAsync(CreateFactAlertRequest request, CancellationToken ct);
+    /// <summary>Эпизод по факту из tf.forecast.results. Объявление (announcement=true) — как
+    /// CreateFactAlertAsync, но повтор (тот же объект, тип и начало эпизода) не создаёт второй записи.
+    /// Обновление переписывает LastAt, маршрут и подробности у того же эпизода или у живого эпизода того же
+    /// типа на объекте. Эпизод, которого BFF не видел (объявление пропущено), заводится — Created=true, чтобы
+    /// уведомление всё же ушло.</summary>
+    Task<(FactAlertDto Alert, bool Created)> RecordFactAlertAsync(
+        CreateFactAlertRequest request, bool announcement, CancellationToken ct);
 }

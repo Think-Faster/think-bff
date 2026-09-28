@@ -96,16 +96,4 @@ public sealed class RabbitMqModelCommandPublisher : IModelCommandPublisher, IAsy
             await connection.CloseAsync();
         }
     }
-
-    /// <summary>Имя типа в модели (fire, gas, flood, equipment, sensor, intrusion).</summary>
-    public static string ModelType(PredictionType type) => type switch
-    {
-        PredictionType.Fire => "fire",
-        PredictionType.Gas => "gas",
-        PredictionType.Flood => "flood",
-        PredictionType.EquipmentFailure => "equipment",
-        PredictionType.SensorFailure => "sensor",
-        PredictionType.Intrusion => "intrusion",
-        _ => type.ToString().ToLowerInvariant(),
-    };
 }
