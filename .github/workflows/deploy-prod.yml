@@ -1,0 +1,111 @@
+# Выкатка в prod (thinkfaster.ru) по пушу в ветку prod (слияние dev → prod) или руками (Run workflow).
+# Код собирается архивом здесь и копируется на сервер в APP_DIR — git и доступ к GitHub на сервере не нужны.
+# Нужно в репозитории (Settings → Secrets and variables → Actions, или один раз на уровне организации):
+#   PROD_IP, PROD_USER, PROD_SSH_KEY — вход на prod-сервер (пользователь в группах docker и tf).
+#   Environment prod: VAULT_ROLE_ID, VAULT_SECRET_ID — AppRole сервиса (think-infra: setup.sh service-credentials).
+# Пока их нет, выкатка пропускается с пометкой, а не падает.
+name: Deploy to prod Server
+
+on:
+  push:
+    branches: [prod]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  APP_DIR: /srv/thinkfaster/services/think-bff
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: prod
+    env:
+      PROD_IP: ${{ secrets.PROD_IP }}
+      READY: ${{ secrets.PROD_IP != '' && secrets.VAULT_ROLE_ID != '' && secrets.VAULT_SECRET_ID != '' }}
+    steps:
+      - name: No prod secrets — skip
+        if: env.READY != 'true'
+        run: echo "::notice::нет PROD_IP/PROD_USER/PROD_SSH_KEY или VAULT_ROLE_ID/VAULT_SECRET_ID в окружении prod — выкатка в prod пропущена"
+
+      - name: Checkout repository
+        if: env.READY == 'true'
+        uses: actions/checkout@v4
+
+      - name: Pack release
+        if: env.READY == 'true'
+        run: |
+          mkdir -p release
+          git archive --format=tar.gz -o release/think-bff.tar.gz HEAD
+          ls -lh release
+
+      - name: Copy release to server
+        if: env.READY == 'true'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PROD_IP }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          source: release/think-bff.tar.gz
+          target: tf-release
+          strip_components: 1
+
+      - name: Build and restart
+        if: env.READY == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          VAULT_ROLE_ID: ${{ secrets.VAULT_ROLE_ID }}
+          VAULT_SECRET_ID: ${{ secrets.VAULT_SECRET_ID }}
+        with:
+          host: ${{ secrets.PROD_IP }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          envs: VAULT_ROLE_ID,VAULT_SECRET_ID
+          command_timeout: 30m
+          script: |
+            set -e
+            D="${{ env.APP_DIR }}"
+            docker network inspect think-fast-net >/dev/null
+
+            # Новый код рядом, настройки (.env без секретов) — из прошлой выкатки
+            rm -rf "$D.new" && mkdir -p "$D.new"
+            tar -xzf ~/tf-release/think-bff.tar.gz -C "$D.new"
+            rm -f ~/tf-release/think-bff.tar.gz
+            if [ -d "$D" ]; then
+              (cd "$D" && find . -name .env -path '*deploy*' -print0 | xargs -0 -r -I{} cp --parents {} "$D.new/")
+            fi
+            rm -rf "$D.old"; [ -d "$D" ] && mv "$D" "$D.old"; mv "$D.new" "$D"
+            cd "$D"
+            echo "commit: ${{ github.sha }}"
+
+            cd BFF/deploy
+            # Настройки prod (не секреты): адреса tf-auth в think-fast-net, issuer/audience — как у tf-auth
+            # (Jwt__Issuer=auth-service, Jwt__Audience=api), CORS — домен prod.
+            if [ ! -f .env ]; then
+              sed -e 's#^AUTH_SERVICE_URL=.*#AUTH_SERVICE_URL=http://tf-auth:8080#' \
+                  -e 's#^AUTH_REFRESH_PATH=.*#AUTH_REFRESH_PATH=/refresh#' \
+                  -e 's#^AUTH_JWKS_URL=.*#AUTH_JWKS_URL=http://tf-auth:8080/.well-known/jwks#' \
+                  -e 's#^AUTH_ISSUER=.*#AUTH_ISSUER=auth-service#' \
+                  -e 's#^AUTH_AUDIENCE=.*#AUTH_AUDIENCE=api#' \
+                  -e 's#^CORS_ALLOWED_ORIGINS=.*#CORS_ALLOWED_ORIGINS=https://thinkfaster.ru,https://www.thinkfaster.ru#' \
+                  .env.example > .env
+            fi
+            [ -f migration/.env ] || cp migration/.env.example migration/.env
+
+            # Миграции — до запуска tf-bff: упадут — старый tf-bff остаётся работать
+            (cd migration \
+              && docker compose -f docker-compose.migrations.yml --profile migrations build \
+              && docker compose -f docker-compose.migrations.yml --profile migrations up \
+                   --abort-on-container-exit --exit-code-from bff-migrations \
+              && docker compose -f docker-compose.migrations.yml --profile migrations down)
+
+            docker compose build
+            docker compose up -d
+            sleep 20
+            docker compose ps
+            docker compose logs --tail=40
