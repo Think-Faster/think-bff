@@ -28,8 +28,8 @@ interface ObjectDto {
   name: string;
   address: string | null;
   geometryGeoJson: string | null;
-  status: ObjectStatus;
-  statusAt: string; // ISO datetime
+  status: ObjectStatus; // считается при чтении, см. §3 «Статус объекта»
+  statusAt: string; // ISO datetime — начало события, которое задаёт статус
 }
 
 interface CreateObjectRequest {
@@ -87,7 +87,7 @@ interface UpsertMapLayerRequest {
 interface SensorDto {
   id: number; // внешний "ид_канала_данных"
   objectId: number;
-  picketId: string | null;
+  picketId: number | null; // pickets.id (bigint), список — GET /objects/{id}/pickets
   system: string;
   sType: string;
   tag: string | null;
@@ -108,7 +108,7 @@ interface ReadingsScopeDto {
 interface CreateSensorRequest {
   id: number;
   objectId: number;
-  picketId?: string | null;
+  picketId?: number | null;
   system: string;
   sType: string;
   tag?: string | null;
@@ -116,10 +116,16 @@ interface CreateSensorRequest {
 }
 
 interface UpdateSensorRequest {
-  picketId?: string | null;
+  picketId?: number | null;
   name: string;
   tag?: string | null;
   isActive: boolean;
+}
+
+// GET /sensors/types: подсистемы и типы, которые уже есть у датчиков.
+interface SensorTypeOptionDto {
+  system: string;
+  sType: string;
 }
 
 interface SensorLinkDto {
@@ -135,7 +141,12 @@ interface CreateSensorLinkRequest {
 
 // ---- Прогнозы ----
 
-type PredictionType = "fire" | "gas" | "flood" | "equipmentFailure" | "sensorFailure" | "intrusion";
+type PredictionType =
+  | "fire" | "gas" | "flood" | "equipmentFailure" | "sensorFailure" | "intrusion"
+  | "temperature" | "blind"; // только по факту (FactAlertDto), прогнозов этих типов нет
+// Авария (fire, gas, flood, intrusion, temperature) даёт объекту ALARM; инцидент (equipmentFailure,
+// sensorFailure, blind) — нет. У blind — пометка «возможна авария».
+type AlertGroup = "accident" | "incident";
 type PredictionStatus = "new" | "inReview" | "taken" | "rejected" | "muted" | "closed";
 type DecisionAction = "take" | "reject" | "mute" | "reopen";
 
@@ -159,7 +170,7 @@ interface PredictionFactorDto {
 
 interface PredictionEvidenceDto {
   sensorId: number;
-  picketId: string | null;
+  picketId: number | null; // pickets.id (bigint), список — GET /objects/{id}/pickets
   ts: string;
   value: number | null;
 }
@@ -211,10 +222,32 @@ interface FactAlertDto {
   id: string;
   objectId: number;
   type: PredictionType;
+  group: AlertGroup;
   startedAt: string;
   announcedAt: string;
+  lastAt: string;      // последнее время эпизода по сообщению модели
+  live: boolean;       // lastAt не старше 2 ч — эпизод идёт
   triggerSensorIds: number[];
   status: string;
+  route: FactRoutePointDto[]; // маршрут нарушителя по времени, только у intrusion; иначе []
+  detailsJson: string | null; // JSON, см. FactDetails
+}
+
+// Точка маршрута: сработка датчика охраны. Координаты и пикет — у датчика (SensorDto, слой карты).
+interface FactRoutePointDto {
+  sensorId: number;
+  sType: string | null; // "КД Дверь", "Датчик движения", …
+  at: string;
+}
+
+// Разобранный detailsJson (ML/INTEGRATION.md §13.11); ключи есть только у своих типов.
+interface FactDetails {
+  direction?: "cold" | "hot";                // temperature
+  channels?: { sensorId: number; value: number; baseline: number; at: string }[]; // temperature
+  cause?: "link" | "power";                  // blind: нет связи / нет питания
+  share?: number;                            // blind: доля каналов (фаз) объекта без данных, 0–1
+  possibleAccident?: boolean;                // blind
+  temperature?: { direction: "hot"; channels: FactDetails["channels"] }; // fire при жаре
 }
 
 // ---- Заявки и работы ----
@@ -276,7 +309,7 @@ interface WorkTaskDto {
   number: string;
   sourceType: TaskSourceType;
   objectId: number;
-  picketId: string | null;
+  picketId: number | null; // pickets.id (bigint), список — GET /objects/{id}/pickets
   topic: string;
   description: string | null;
   workType: string | null;
@@ -301,7 +334,7 @@ interface CreateWorkTaskRequest {
   number: string;
   sourceType: TaskSourceType;
   objectId: number;
-  picketId?: string | null;
+  picketId?: number | null;
   topic: string;
   description?: string | null;
   workType?: string | null;
@@ -490,6 +523,7 @@ interface WorkScheduleEntryDto {
 | Метод | Путь | Право | Ответ |
 | --- | --- | --- | --- |
 | GET | `/sensors?objectId=&search=&page=&pageSize=` | `sensors:read` | `PagedResult<SensorDto>` |
+| GET | `/sensors/types` | `sensors:read` | `SensorTypeOptionDto[]` — различные пары `{ system, sType }` среди датчиков, варианты для формы |
 | GET | `/sensors/{id}` | `sensors:read` | `SensorDto` |
 | POST | `/sensors` | `sensors:create` | `201` + `SensorDto`. `id` — внешний |
 | PUT | `/sensors/{id}` | `sensors:update` | `SensorDto` |
@@ -517,7 +551,7 @@ interface WorkScheduleEntryDto {
 | GET | `/predictions/{id}` | `predictions:read` | `PredictionDto` (с `factors`/`evidence`) |
 | POST | `/predictions` | `predictions:create` | `201` + `PredictionDto`. Дедуп по `(objectId, type, hourEnd, modelVersionId)` — повтор вернёт уже существующий, не создаст дубль |
 | POST | `/predictions/{id}/decisions` | `predictions:update` | `200` + `PredictionDecisionDto`. Меняет `status` прогноза (`take`→`taken`, `reject`→`rejected`, `mute`→`muted`, `reopen`→`inReview`). `take`/`reject`/`mute` — только из `new`/`inReview`, иначе `409 prediction_already_decided`; `reopen` — только из `taken`/`rejected`/`muted`, иначе `409 invalid_status`. `take` сам заводит заявку (`inWork`, диспетчер — вы) и возвращает её id в `taskId`. Решение уходит в модель (`tf.model.commands`, ML/INTEGRATION.md §13.3) |
-| GET | `/fact-alerts?objectId=&page=&pageSize=` | `predictions:read` | `PagedResult<FactAlertDto>` |
+| GET | `/fact-alerts?objectId=&live=&page=&pageSize=` | `predictions:read` | `PagedResult<FactAlertDto>`, свежие по `startedAt` сверху. `live=true` — только идущие эпизоды (для слоя маршрутов на карте), `false` — только прошедшие |
 | POST | `/fact-alerts` | `predictions:create` | `201` + `FactAlertDto` |
 
 ### Заявки и работы
@@ -596,10 +630,17 @@ interface WorkScheduleEntryDto {
 - **`ObjectDto.id`/`SensorDto.id` — не BFF-шные UUID, а внешние числовые ID** из справочника системы
   мониторинга. Создание объекта/датчика (`POST /objects`, `POST /sensors`) требует передать `id` явно —
   это не автогенерируемое поле, как у остальных сущностей в этом API.
-- **`Prediction`/`FactAlert` в норме создаёт не человек, а модель** (через пока не построенный Kafka-
-  consumer `tf.forecast.results`). `POST /predictions`/`POST /fact-alerts` уже работают и защищены правами
-  — годятся для тестовых сценариев и админки, но не жди, что это будет типовая форма создания в UI
+- **`Prediction`/`FactAlert` в норме создаёт не человек, а модель** (Kafka-consumer
+  `tf.forecast.results`, `FactResultsConsumer`). `POST /predictions`/`POST /fact-alerts` работают и защищены
+  правами — годятся для тестовых сценариев и админки, но не жди, что это будет типовая форма создания в UI
   диспетчера.
+- **Эпизод по факту обновляется, пока идёт.** Модель шлёт живой эпизод каждый час: `lastAt`, `route` и
+  `detailsJson` у той же записи переписываются, уведомление повторно не уходит. Маршрут нарушителя
+  дописывается — перечитывай факт, пока `live`.
+- **Статус объекта считается при чтении** (ML/INTEGRATION.md §13.11): живой факт группы `accident` —
+  `alarm`; живой `blind` — `offline` (связи или питания нет, возможна авария); открытая карточка прогноза
+  (`new`, `inReview`, `taken`) — `watch`; иначе хранимый `normal`. `alarm` старше `offline`: авария,
+  объявленная до потери связи, с карты не пропадает.
 - **`POST /tasks/{id}/take` — гонка, не обычная валидация.** Два диспетчера могут одновременно нажать
   «Взять в работу» на одной заявке; `409 task_already_taken` — штатный, ожидаемый исход для одного из
   них, не баг. Обработай отдельным сообщением («заявку уже взяли») и обнови список.

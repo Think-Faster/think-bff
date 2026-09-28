@@ -47,7 +47,7 @@ public sealed class ModelDecisionRelay
             {
                 PredictionId = decision.PredictionId,
                 ObjectId = prediction.ObjectId,
-                Type = RabbitMqModelCommandPublisher.ModelType(prediction.Type),
+                Type = prediction.Type.ToModelString(),
                 ReasonCode = decision.Action == DecisionAction.Reject ? decision.ReasonCode : null,
                 Until = decision.Action == DecisionAction.Mute ? decision.MutedUntil : null,
             };
@@ -66,7 +66,7 @@ public sealed class ModelDecisionRelay
             var payload = new
             {
                 ObjectId = incident.ObjectId,
-                Type = RabbitMqModelCommandPublisher.ModelType(incident.Type),
+                Type = incident.Type.ToModelString(),
                 IncidentId = incident.Id,
                 OccurredAt = incident.StartedAt,
             };

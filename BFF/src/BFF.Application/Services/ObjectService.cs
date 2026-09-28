@@ -2,6 +2,7 @@ using BFF.Application.Exceptions;
 using BFF.Context;
 using BFF.Contracts.Common;
 using BFF.Contracts.Objects;
+using BFF.Models.Constants;
 using BFF.Models.Entities;
 using BFF.Models.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -28,8 +29,9 @@ public sealed class ObjectService : IObjectService
         }
 
         var total = await query.CountAsync(ct);
-        var items = await query.OrderBy(o => o.Name).Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(o => ToDto(o)).ToListAsync(ct);
+        var entities = await query.OrderBy(o => o.Name).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        var statuses = await LiveStatusAsync(entities.Select(o => o.Id).ToArray(), ct);
+        var items = entities.Select(o => ToDto(o, statuses)).ToList();
 
         return new PagedResult<ObjectDto> { Items = items, Total = total, Page = page, PageSize = pageSize };
     }
@@ -38,7 +40,46 @@ public sealed class ObjectService : IObjectService
     {
         var entity = await _context.Objects.AsNoTracking().SingleOrDefaultAsync(o => o.Id == id, ct)
             ?? throw new NotFoundException($"Object {id} not found.");
-        return ToDto(entity);
+        return ToDto(entity, await LiveStatusAsync(new[] { id }, ct));
+    }
+
+    /// <summary>
+    /// Статус объекта считается при чтении (ML/INTEGRATION.md §13.11): живой факт группы «авария» — ALARM;
+    /// живая слепота (Blind) — OFFLINE; открытая карточка прогноза (NEW, IN_REVIEW, TAKEN) — WATCH; иначе
+    /// хранимый статус. ALARM старше OFFLINE: авария, объявленная до потери связи, не пропадает с карты.
+    /// Время статуса — начало самого раннего события, которое его задаёт.
+    /// </summary>
+    private async Task<Dictionary<int, (ObjectStatus Status, DateTimeOffset At)>> LiveStatusAsync(
+        int[] ids, CancellationToken ct)
+    {
+        var since = FactAlertLiveness.LiveSince(DateTimeOffset.UtcNow);
+        var facts = await _context.FactAlerts.AsNoTracking()
+            .Where(a => ids.Contains(a.ObjectId) && a.LastAt >= since)
+            .Select(a => new { a.ObjectId, a.Type, a.StartedAt })
+            .ToListAsync(ct);
+        var open = new[] { PredictionStatus.New, PredictionStatus.InReview, PredictionStatus.Taken };
+        var forecasts = await _context.Predictions.AsNoTracking()
+            .Where(p => ids.Contains(p.ObjectId) && open.Contains(p.Status))
+            .GroupBy(p => p.ObjectId)
+            .Select(g => new { ObjectId = g.Key, At = g.Min(p => p.CreatedAt) })
+            .ToListAsync(ct);
+
+        var result = forecasts.ToDictionary(f => f.ObjectId, f => (ObjectStatus.Watch, f.At));
+        foreach (var byObject in facts.GroupBy(f => f.ObjectId))
+        {
+            var alarm = byObject.Where(f => f.Type.Group() == AlertGroup.Accident).ToList();
+            var blind = byObject.Where(f => f.Type == PredictionType.Blind).ToList();
+            if (alarm.Count > 0)
+            {
+                result[byObject.Key] = (ObjectStatus.Alarm, alarm.Min(f => f.StartedAt));
+            }
+            else if (blind.Count > 0)
+            {
+                result[byObject.Key] = (ObjectStatus.Offline, blind.Min(f => f.StartedAt));
+            }
+        }
+
+        return result;
     }
 
     public async Task<ObjectDto> CreateAsync(CreateObjectRequest request, CancellationToken ct)
@@ -80,7 +121,7 @@ public sealed class ObjectService : IObjectService
         entity.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _context.SaveChangesAsync(ct);
-        return ToDto(entity);
+        return ToDto(entity, await LiveStatusAsync(new[] { id }, ct));
     }
 
     public async Task DeleteAsync(int id, CancellationToken ct)
@@ -199,18 +240,27 @@ public sealed class ObjectService : IObjectService
         }
     }
 
-    private static ObjectDto ToDto(MonitoringObject o) => new()
+    private static ObjectDto ToDto(MonitoringObject o) => ToDto(o, null);
+
+    private static ObjectDto ToDto(
+        MonitoringObject o, IReadOnlyDictionary<int, (ObjectStatus Status, DateTimeOffset At)>? statuses)
     {
-        Id = o.Id,
-        Level = o.Level,
-        ParentId = o.ParentId,
-        Kind = o.Kind,
-        Name = o.Name,
-        Address = o.Address,
-        GeometryGeoJson = o.GeometryGeoJson,
-        Status = o.Status,
-        StatusAt = o.StatusAt,
-    };
+        var (status, statusAt) = statuses is not null && statuses.TryGetValue(o.Id, out var live)
+            ? live
+            : (o.Status, o.StatusAt);
+        return new ObjectDto
+        {
+            Id = o.Id,
+            Level = o.Level,
+            ParentId = o.ParentId,
+            Kind = o.Kind,
+            Name = o.Name,
+            Address = o.Address,
+            GeometryGeoJson = o.GeometryGeoJson,
+            Status = status,
+            StatusAt = statusAt,
+        };
+    }
 
     private static PicketDto ToDto(Picket p) => new()
     {

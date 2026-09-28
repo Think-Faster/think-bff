@@ -17,9 +17,14 @@ public sealed class FactAlertConfiguration : IEntityTypeConfiguration<FactAlert>
         builder.Property(a => a.Type).HasColumnName("type").HasConversion<short>();
         builder.Property(a => a.StartedAt).HasColumnName("started_at");
         builder.Property(a => a.AnnouncedAt).HasColumnName("announced_at");
+        builder.Property(a => a.LastAt).HasColumnName("last_at");
         builder.Property(a => a.TriggerSensorIds).HasColumnName("trigger_sensor_ids");
         builder.Property(a => a.Status).HasColumnName("status").IsRequired();
+        builder.Property(a => a.RouteJson).HasColumnName("route").HasColumnType("jsonb");
+        builder.Property(a => a.DetailsJson).HasColumnName("details").HasColumnType("jsonb");
 
         builder.HasIndex(a => new { a.ObjectId, a.Type }).HasDatabaseName("ix_fact_alerts_object_type");
+        // Статус объекта при чтении: живые эпизоды — по свежести last_at.
+        builder.HasIndex(a => a.LastAt).HasDatabaseName("ix_fact_alerts_last_at");
     }
 }

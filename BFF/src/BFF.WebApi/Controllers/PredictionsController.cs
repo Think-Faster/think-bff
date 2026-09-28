@@ -70,8 +70,9 @@ public sealed class PredictionsController : ControllerBase
     [HttpGet("fact-alerts")]
     [RequirePermission(ResourceCodes.Predictions, PermissionFlags.Read)]
     public async Task<IActionResult> ListFactAlerts(
-        [FromQuery] int? objectId, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
-        => Ok(await _predictionService.ListFactAlertsAsync(objectId, page, pageSize, ct));
+        [FromQuery] int? objectId, [FromQuery] bool? live, [FromQuery] int page = 1, [FromQuery] int pageSize = 50,
+        CancellationToken ct = default)
+        => Ok(await _predictionService.ListFactAlertsAsync(objectId, live, page, pageSize, ct));
 
     [HttpPost("fact-alerts")]
     [RequirePermission(ResourceCodes.Predictions, PermissionFlags.Create)]
