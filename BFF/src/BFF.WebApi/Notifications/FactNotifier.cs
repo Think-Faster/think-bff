@@ -90,7 +90,7 @@ public sealed class FactNotifier
             chats.Count == 0 ? "none" : telegram ? "queued" : "failed", skipped);
 
         await _audit.WriteAsync(new AuditEvent(
-            "ticket.created", failed == 0 && (chats.Count == 0 || telegram) ? "success" : "failure",
+            "ticket.created", failed == 0 && (chats.Count == 0 || telegram) ? "success" : "error",
             "service", null, "tf-bff", context.RequestId, null, "fact_alert", alert.Id.ToString(),
             new Dictionary<string, object?>
             {
