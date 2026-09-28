@@ -49,6 +49,19 @@ public sealed class TasksController : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
         => Ok(await _taskService.ListAsync(dispatcherId, status, page, pageSize, ct));
 
+    /// <summary>Исполнители для назначения (role=engineers) и возврата диспетчеру (role=dispatchers).</summary>
+    [HttpGet("assignees")]
+    [RequirePermission(ResourceCodes.Tasks, PermissionFlags.Read)]
+    public async Task<IActionResult> Assignees([FromQuery] string role, CancellationToken ct)
+    {
+        if (role is not ("engineers" or "dispatchers"))
+        {
+            throw new ArgumentException("role: engineers или dispatchers.", nameof(role));
+        }
+
+        return Ok(await _taskService.ListAssigneesAsync(role, ct));
+    }
+
     [HttpGet("{id:guid}")]
     [RequirePermission(ResourceCodes.Tasks, PermissionFlags.Read)]
     public async Task<IActionResult> Get(Guid id, CancellationToken ct)

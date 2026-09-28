@@ -344,6 +344,27 @@ public sealed class WorkTaskService : IWorkTaskService
         return await GetAsync(id, ct);
     }
 
+    /// <summary>Активные пользователи группы groupCode и всех её подгрупп (group_closure). Диспетчеру
+    /// права users/groups не выданы, а выбрать инженера или диспетчера для заявки ему нужно.</summary>
+    public async Task<IReadOnlyList<TaskAssigneeDto>> ListAssigneesAsync(string groupCode, CancellationToken ct)
+    {
+        var groups = _context.GroupClosures
+            .Where(c => _context.Groups.Any(g => g.Id == c.AncestorId && g.Code == groupCode))
+            .Select(c => c.DescendantId);
+        var userIds = _context.GroupMembers
+            .Where(m => m.MemberType == MemberType.User && groups.Contains(m.GroupId))
+            .Select(m => m.MemberId);
+
+        return await _context.Users.AsNoTracking()
+            .Where(u => u.IsActive && userIds.Contains(u.Id))
+            .OrderBy(u => u.LastName).ThenBy(u => u.FirstName)
+            .Select(u => new TaskAssigneeDto
+            {
+                Id = u.Id, LastName = u.LastName, FirstName = u.FirstName, MiddleName = u.MiddleName,
+            })
+            .ToListAsync(ct);
+    }
+
     private const string AssignmentAssigned = "assigned";
     private const string AssignmentReplaced = "replaced";
 

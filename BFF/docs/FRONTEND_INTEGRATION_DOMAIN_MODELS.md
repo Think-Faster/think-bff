@@ -531,6 +531,7 @@ interface WorkScheduleEntryDto {
 | POST | `/tasks/{id}/take` | `tasks:update` | «кто первый взял — тот ведёт»: `200` + `WorkTaskDto`, либо `409 task_already_taken`, если кто-то успел раньше — **обязательно обработай этот код отдельно от прочих 409** (не ошибка данных, а гонка) |
 | POST | `/tasks/{id}/predictions` | `tasks:update` | тело `{ predictionId, isPrimary }` — прикрепить прогноз как основание, `201` |
 | DELETE | `/tasks/{id}/predictions/{predictionId}` | `tasks:update` | открепить (запись остаётся в истории с `detachedAt`) — `204` |
+| GET | `/tasks/assignees?role=engineers\|dispatchers` | `tasks:read` | `200` + `{ id, lastName, firstName, middleName }[]` — активные участники группы `engineers` или `dispatchers` вместе с подгруппами: кого назначить инженером и кому вернуть заявку. Прав `users`/`groups` для этого не нужно |
 | POST | `/tasks/{id}/assignments` | `tasks:update` | тело `{ engineerId, comment? }` — `201` + `TaskAssignmentDto`, заявка переходит в `assigned`. Из `new`/`inWork`/`assigned`/`engineerWorking`/`returnedToWork`; прежнее назначение получает статус `replaced` |
 | POST | `/tasks/{id}/start` | `tasks:update` | тело `{ comment? }` (можно пустое) — инженер приступил: `assigned`/`returnedToWork` → `engineerWorking`, `200` + `WorkTaskDto` |
 | POST | `/tasks/{id}/reports` | `tasks:update` | тело `CreateTaskReportRequest`-подобное (`actualState?`, `worksDone?`, `resultCode`, `comment?`) — `201` + `TaskReportDto`, заявка переходит в `completed`. Только при назначенном инженере, из `assigned`/`engineerWorking`/`returnedToWork` |

@@ -30,4 +30,6 @@ public interface IWorkTaskService
 
     /// <summary>Отмена из любого активного статуса -> Cancelled, прикреплённые прогнозы закрываются.</summary>
     Task<WorkTaskDto> CancelAsync(Guid id, TaskTransitionRequest request, CancellationToken ct);
+
+    Task<IReadOnlyList<TaskAssigneeDto>> ListAssigneesAsync(string groupCode, CancellationToken ct);
 }
