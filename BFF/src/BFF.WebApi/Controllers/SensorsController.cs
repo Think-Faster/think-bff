@@ -36,6 +36,12 @@ public sealed class SensorsController : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
         => Ok(await _sensorService.ListAsync(objectId, search, page, pageSize, ct));
 
+    /// <summary>Подсистемы и типы, которые уже встречаются у датчиков, — варианты выбора в форме.</summary>
+    [HttpGet("types")]
+    [RequirePermission(ResourceCodes.Sensors, PermissionFlags.Read)]
+    public async Task<IActionResult> Types(CancellationToken ct)
+        => Ok(await _sensorService.ListTypesAsync(ct));
+
     [HttpGet("{id:int}")]
     [RequirePermission(ResourceCodes.Sensors, PermissionFlags.Read)]
     public async Task<IActionResult> Get(int id, CancellationToken ct)
