@@ -1,5 +1,6 @@
 using BFF.Contracts.ModelSettings;
 using BFF.Models.Enums;
+using System.Globalization;
 using FluentValidation;
 
 namespace BFF.Application.Validators;
@@ -54,4 +55,60 @@ public sealed class UpsertWorkScheduleEntryRequestValidator : AbstractValidator<
         RuleFor(x => x.Comment).MaximumLength(1000);
         RuleForEach(x => x.IncidentTypes).NotEmpty().MaximumLength(100);
     }
+}
+
+public sealed class SwitchModelVersionRequestValidator : AbstractValidator<SwitchModelVersionRequest>
+{
+    public SwitchModelVersionRequestValidator()
+    {
+        RuleFor(x => x.Type).Must(t => PredictionTypeExtensions.ForecastModelNames.Contains(t))
+            .WithMessage("type must be one of: " + string.Join(", ", PredictionTypeExtensions.ForecastModelNames) + ".");
+        RuleFor(x => x.VersionId).GreaterThan(0).When(x => x.VersionId.HasValue);
+        RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
+    }
+}
+
+/// <summary>Границы долей — в схеме модели (/status settings_bounds), здесь только форма снимка: модель
+/// проверит границы сама и отбросит неверный снимок с записью в аудит.</summary>
+public sealed class OperatingSettingsRequestValidator : AbstractValidator<OperatingSettingsRequest>
+{
+    public OperatingSettingsRequestValidator()
+    {
+        RuleFor(x => x.Version).GreaterThan(0);
+        RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
+        RuleFor(x => x.Types)
+            .Must(t => t.Count == PredictionTypeExtensions.ForecastModelNames.Count
+                       && PredictionTypeExtensions.ForecastModelNames.All(t.ContainsKey))
+            .WithMessage("types must contain exactly: " + string.Join(", ", PredictionTypeExtensions.ForecastModelNames) + ".");
+        RuleForEach(x => x.Types).ChildRules(entry =>
+        {
+            entry.RuleFor(e => e.Value.Share).ExclusiveBetween(0, 1);
+            entry.RuleFor(e => e.Value.RejectK).InclusiveBetween(0, 0.5).When(e => e.Value.RejectK.HasValue);
+        });
+    }
+}
+
+public sealed class IgnoredPeriodsRequestValidator : AbstractValidator<IgnoredPeriodsRequest>
+{
+    public const string TimeFormat = "yyyy-MM-dd HH:mm";
+
+    public IgnoredPeriodsRequestValidator()
+    {
+        RuleFor(x => x.Version).GreaterThan(0);
+        RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
+        RuleForEach(x => x.Rows).ChildRules(row =>
+        {
+            row.RuleFor(r => r.A).Must(BeTime).WithMessage("a must be '" + TimeFormat + "' (Moscow time).");
+            row.RuleFor(r => r.B).Must(BeTime).WithMessage("b must be '" + TimeFormat + "' (Moscow time).");
+            row.RuleFor(r => r).Must(r => !BeTime(r.A) || !BeTime(r.B) || Parse(r.A) < Parse(r.B))
+                .WithMessage("a must be earlier than b.");
+            row.RuleFor(r => r.Comment).MaximumLength(500);
+        });
+    }
+
+    private static bool BeTime(string value) =>
+        DateTime.TryParseExact(value, TimeFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
+
+    private static DateTime Parse(string value) =>
+        DateTime.ParseExact(value, TimeFormat, CultureInfo.InvariantCulture);
 }

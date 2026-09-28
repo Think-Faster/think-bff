@@ -170,7 +170,7 @@ duplicate_code`.
 (TS-типы всех DTO + таблицы эндпоинтов `/objects`, `/sensors`, `/predictions`, `/fact-alerts`, `/tasks`,
 `/incidents`, `/users/{id}/schedule`, `/users/{id}/assigned-objects`, `/users/{id}/engineer-profile`,
 `/users/{id}/permits`, `/presence`, `/brigades`, `/model-versions`, `/coefficients`, `/retrain-jobs`,
-`/ignored-ranges`, `/work-schedule`, `/readings/scope`). Базовый
+`/ignored-ranges`, `/work-schedule`, `/model-commands/*`, `/readings/scope`). Базовый
 контур `users`/`groups`/`permissions` — в парном документе,
 [`FRONTEND_INTEGRATION_GROUPS_USERS_PERMISSIONS.md`](FRONTEND_INTEGRATION_GROUPS_USERS_PERMISSIONS.md).
 Не дублирую здесь — таблиц много, а формат идентичен разделам выше (путь / право / тело / ответ).

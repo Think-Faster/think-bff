@@ -24,7 +24,7 @@ flowchart LR
     tf-bff -->|HTTP, AppRole login| vault
     tf-bff -->|Redis: XADD audit, SET NX EX email:ratelimit:*| tf-redis
     tf-bff -->|AMQP publish tf.notifications email/telegram| tf-rabbit
-    tf-bff -->|AMQP publish tf.model.commands decision.*| tf-rabbit
+    tf-bff -->|AMQP publish tf.model.commands decision.*, model.switch, settings.*| tf-rabbit
     tf-bff -->|Kafka consume tf.forecast.results, group tf-bff-facts| tf-kafka
 
     tf-rabbit -->|AMQP consume tf.notifications email| tf-mail
@@ -170,6 +170,7 @@ sequenceDiagram
 | GET/POST | `/retrain-jobs` | `model_settings:read`/`manage` | заявки на дообучение |
 | GET/POST/DELETE | `/ignored-ranges[/{id}]` | `model_settings:read`/`manage` | игнорируемые диапазоны |
 | GET/POST/PUT/DELETE | `/work-schedule[/{workId}]` | `model_settings:read`/`manage` | плановые работы |
+| POST | `/model-commands/switch\|operating\|gaps` | `model_settings:manage` | команды модели `model.switch`, `settings.operating`, `settings.gaps` — `202`, при сбое брокера `503` |
 | POST | `/notifications/email` | `notifications:create` | рассылка писем, см. §4 |
 
 Источник — атрибуты `[HttpGet]`/`[HttpPost]`/`[HttpPut]`/`[HttpDelete]` и `[RequirePermission]` во всех
@@ -185,7 +186,7 @@ sequenceDiagram
 | HTTP | Vault, `VAULT_ADDR` | AppRole-логин, чтение секретов при старте контейнера | контейнер не стартует (см. §7) |
 | Redis (StackExchange.Redis) | `tf-redis` | поток `audit` (журнал действий), ключи `email:ratelimit:*` (антиспам) | аудит уходит в лог сервиса вместо Redis; лимитер пропускает (fail-open) — `src/BFF.WebApi/Audit/AuditWriter.cs:70`, `src/BFF.WebApi/Notifications/EmailRateLimiter.cs` |
 | AMQP (RabbitMQ.Client 7.2.2) | `tf-rabbit`, exchange `tf.notifications` | публикация email/telegram-уведомлений | `PublishException` → вызывающий код помечает получателя `failed`, автоповтора нет |
-| AMQP | `tf-rabbit`, exchange `tf.model.commands` | решения диспетчера обратно в модель | ошибка только в лог — решение уже в БД, диспетчеру не мешает |
+| AMQP | `tf-rabbit`, exchange `tf.model.commands` | решения диспетчера и команды админ-панели в модель | решения: ошибка только в лог — решение уже в БД; команды админ-панели: `503 model_commands_unavailable` |
 | Kafka (Confluent.Kafka) | `tf-kafka`, топик `tf.forecast.results`, группа `tf-bff-facts` | приём прогнозов/фактов от модели | без `TF_KAFKA_BFF_PASSWORD` консьюмер не стартует, остальной BFF работает; сбой обработки — 4 попытки, потом пропуск с логом |
 
 ## 4. Контракты данных
@@ -254,7 +255,7 @@ sequenceDiagram
 {
   "schema": 1,
   "command_id": "...",
-  "kind": "decision.take|decision.reject|decision.mute|decision.reopen|decision.confirmed",
+  "kind": "decision.take|decision.reject|decision.mute|decision.reopen|decision.confirmed|model.switch|settings.operating|settings.gaps",
   "issued_at": "...",
   "issued_by": { "sub": "...", "login": "..." },
   "request_id": "...",
@@ -264,7 +265,9 @@ sequenceDiagram
 
 `routing key` = `kind`. `command_id` = id решения диспетчера или id происшествия — повторная публикация
 с тем же `command_id` идемпотентна на стороне модели (**не проверено**, со слов ML/INTEGRATION.md §13.3).
-Источник — `src/BFF.WebApi/Notifications/ModelCommandPublisher.cs`, `ModelDecisionRelay.cs`.
+У команд админ-панели `command_id` — новый GUID на каждый запрос: снимки `settings.*` несут свой номер
+версии, и повтор устаревшего модель отбросит сама.
+Источник — `src/BFF.WebApi/Notifications/ModelCommandPublisher.cs`, `ModelDecisionRelay.cs`, `ModelSettingsRelay.cs`.
 
 ### `tf.forecast.results` (потребление, топик Kafka)
 

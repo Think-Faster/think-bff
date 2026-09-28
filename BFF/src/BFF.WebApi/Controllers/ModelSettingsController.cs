@@ -1,9 +1,11 @@
 using BFF.Application.Services;
+using BFF.Contracts.Common;
 using BFF.Contracts.ModelSettings;
 using BFF.Models.Constants;
 using BFF.Models.Enums;
 using BFF.WebApi.Authorization;
 using BFF.WebApi.Extensions;
+using BFF.WebApi.Notifications;
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 
@@ -147,4 +149,45 @@ public sealed class ModelSettingsController : ControllerBase
         await _service.DeleteWorkAsync(workId, currentUser.UserId, ct);
         return NoContent();
     }
+
+    // Команды модели (§13.3): состояние — в самой модели (/api/ml/status), BFF только передаёт снимок.
+    // 202 — команда в очереди; принят ли снимок, видно по номеру версии в /status и в аудите модели.
+
+    [HttpPost("model-commands/switch")]
+    [RequirePermission(ResourceCodes.ModelSettings, PermissionFlags.Manage)]
+    public async Task<IActionResult> SwitchModelVersion(
+        [FromBody] SwitchModelVersionRequest request, [FromServices] IValidator<SwitchModelVersionRequest> validator,
+        [FromServices] ModelSettingsRelay relay, CancellationToken ct)
+    {
+        await validator.ValidateAndThrowAsync(request, ct);
+        return CommandResult(await relay.SwitchAsync(HttpContext, request, ct));
+    }
+
+    [HttpPost("model-commands/operating")]
+    [RequirePermission(ResourceCodes.ModelSettings, PermissionFlags.Manage)]
+    public async Task<IActionResult> SetOperatingSettings(
+        [FromBody] OperatingSettingsRequest request, [FromServices] IValidator<OperatingSettingsRequest> validator,
+        [FromServices] ModelSettingsRelay relay, CancellationToken ct)
+    {
+        await validator.ValidateAndThrowAsync(request, ct);
+        return CommandResult(await relay.OperatingAsync(HttpContext, request, ct));
+    }
+
+    [HttpPost("model-commands/gaps")]
+    [RequirePermission(ResourceCodes.ModelSettings, PermissionFlags.Manage)]
+    public async Task<IActionResult> SetIgnoredPeriods(
+        [FromBody] IgnoredPeriodsRequest request, [FromServices] IValidator<IgnoredPeriodsRequest> validator,
+        [FromServices] ModelSettingsRelay relay, CancellationToken ct)
+    {
+        await validator.ValidateAndThrowAsync(request, ct);
+        return CommandResult(await relay.GapsAsync(HttpContext, request, ct));
+    }
+
+    private IActionResult CommandResult(ModelCommandAcceptedResponse? accepted) => accepted is null
+        ? StatusCode(StatusCodes.Status503ServiceUnavailable, new ErrorResponse
+        {
+            Code = "model_commands_unavailable",
+            Message = "Model command broker is unavailable, retry later.",
+        })
+        : StatusCode(StatusCodes.Status202Accepted, accepted);
 }

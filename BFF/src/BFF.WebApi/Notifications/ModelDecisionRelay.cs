@@ -2,7 +2,6 @@ using BFF.Application.Services;
 using BFF.Contracts.Incidents;
 using BFF.Contracts.Predictions;
 using BFF.Models.Enums;
-using BFF.WebApi.Extensions;
 
 namespace BFF.WebApi.Notifications;
 
@@ -51,7 +50,7 @@ public sealed class ModelDecisionRelay
                 ReasonCode = decision.Action == DecisionAction.Reject ? decision.ReasonCode : null,
                 Until = decision.Action == DecisionAction.Mute ? decision.MutedUntil : null,
             };
-            await _publisher.PublishAsync(kind, decision.Id, payload, Issuer(http), RequestId(http), ct);
+            await _publisher.PublishAsync(kind, decision.Id, payload, CommandIssuer.From(http), CommandIssuer.RequestId(http), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -70,20 +69,11 @@ public sealed class ModelDecisionRelay
                 IncidentId = incident.Id,
                 OccurredAt = incident.StartedAt,
             };
-            await _publisher.PublishAsync("decision.confirmed", incident.Id, payload, Issuer(http), RequestId(http), ct);
+            await _publisher.PublishAsync("decision.confirmed", incident.Id, payload, CommandIssuer.From(http), CommandIssuer.RequestId(http), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Model command decision.confirmed for incident {IncidentId} was not published", incident.Id);
         }
     }
-
-    private static CommandIssuer Issuer(HttpContext http)
-    {
-        var user = http.GetCurrentUser();
-        return new CommandIssuer(user?.AuthUserId ?? string.Empty, http.User.FindFirst("login")?.Value);
-    }
-
-    private static string RequestId(HttpContext http)
-        => http.Request.Headers["X-Request-ID"].FirstOrDefault() ?? http.TraceIdentifier;
 }
