@@ -18,9 +18,11 @@ services:
 
       # Пароль bff_user (docs/VAULT_MIGRATION.md), пароль Redis (журнал действий — события в поток
       # `audit`, права-и-аудит §6.5) и пароль RabbitMQ (публикация email-уведомлений в tf.notifications,
-      # см. задание инфраструктуры про tf-mail — docs/DECISIONS.md). Kafka сервис пока не использует.
-      VAULT_SECRET_PATHS: postgres/bff redis rabbit/bff
+      # см. задание инфраструктуры про tf-mail — docs/DECISIONS.md), пароль Kafka (TF_KAFKA_BFF_PASSWORD:
+      # события модели «по факту» из tf.forecast.results → заявка и рассылка дежурным).
+      VAULT_SECRET_PATHS: postgres/bff redis rabbit/bff kafka/bff
       REDIS_HOST: tf-redis:6379
+      KAFKA_BOOTSTRAP: tf-kafka:9092
       VAULT_EXPAND: DB_PASSWORD
 
       # $$ — чтобы docker compose не подставлял сам: в контейнер попадёт литерал ${...},
