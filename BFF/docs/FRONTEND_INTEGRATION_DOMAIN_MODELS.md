@@ -87,7 +87,7 @@ interface UpsertMapLayerRequest {
 interface SensorDto {
   id: number; // внешний "ид_канала_данных"
   objectId: number;
-  picketId: string | null;
+  picketId: number | null; // pickets.id (bigint), список — GET /objects/{id}/pickets
   system: string;
   sType: string;
   tag: string | null;
@@ -108,7 +108,7 @@ interface ReadingsScopeDto {
 interface CreateSensorRequest {
   id: number;
   objectId: number;
-  picketId?: string | null;
+  picketId?: number | null;
   system: string;
   sType: string;
   tag?: string | null;
@@ -116,10 +116,16 @@ interface CreateSensorRequest {
 }
 
 interface UpdateSensorRequest {
-  picketId?: string | null;
+  picketId?: number | null;
   name: string;
   tag?: string | null;
   isActive: boolean;
+}
+
+// GET /sensors/types: подсистемы и типы, которые уже есть у датчиков.
+interface SensorTypeOptionDto {
+  system: string;
+  sType: string;
 }
 
 interface SensorLinkDto {
@@ -159,7 +165,7 @@ interface PredictionFactorDto {
 
 interface PredictionEvidenceDto {
   sensorId: number;
-  picketId: string | null;
+  picketId: number | null; // pickets.id (bigint), список — GET /objects/{id}/pickets
   ts: string;
   value: number | null;
 }
@@ -276,7 +282,7 @@ interface WorkTaskDto {
   number: string;
   sourceType: TaskSourceType;
   objectId: number;
-  picketId: string | null;
+  picketId: number | null; // pickets.id (bigint), список — GET /objects/{id}/pickets
   topic: string;
   description: string | null;
   workType: string | null;
@@ -301,7 +307,7 @@ interface CreateWorkTaskRequest {
   number: string;
   sourceType: TaskSourceType;
   objectId: number;
-  picketId?: string | null;
+  picketId?: number | null;
   topic: string;
   description?: string | null;
   workType?: string | null;
@@ -490,6 +496,7 @@ interface WorkScheduleEntryDto {
 | Метод | Путь | Право | Ответ |
 | --- | --- | --- | --- |
 | GET | `/sensors?objectId=&search=&page=&pageSize=` | `sensors:read` | `PagedResult<SensorDto>` |
+| GET | `/sensors/types` | `sensors:read` | `SensorTypeOptionDto[]` — различные пары `{ system, sType }` среди датчиков, варианты для формы |
 | GET | `/sensors/{id}` | `sensors:read` | `SensorDto` |
 | POST | `/sensors` | `sensors:create` | `201` + `SensorDto`. `id` — внешний |
 | PUT | `/sensors/{id}` | `sensors:update` | `SensorDto` |

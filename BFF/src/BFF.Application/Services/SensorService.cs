@@ -38,6 +38,16 @@ public sealed class SensorService : ISensorService
         return new PagedResult<SensorDto> { Items = items, Total = total, Page = page, PageSize = pageSize };
     }
 
+    /// <summary>Различные пары (system, s_type) всех датчиков — справочника подсистем и типов в БД нет,
+    /// поэтому варианты для формы берутся из данных.</summary>
+    public async Task<IReadOnlyList<SensorTypeOptionDto>> ListTypesAsync(CancellationToken ct)
+        => await _context.Sensors.AsNoTracking()
+            .Select(s => new { s.System, s.SType })
+            .Distinct()
+            .OrderBy(s => s.System).ThenBy(s => s.SType)
+            .Select(s => new SensorTypeOptionDto { System = s.System, SType = s.SType })
+            .ToListAsync(ct);
+
     public async Task<SensorDto> GetAsync(int id, CancellationToken ct)
     {
         var entity = await _context.Sensors.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id, ct)

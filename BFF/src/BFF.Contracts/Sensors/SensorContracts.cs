@@ -12,6 +12,13 @@ public sealed class SensorDto
     public bool IsActive { get; init; }
 }
 
+/// <summary>Пара «подсистема — тип», которая уже есть среди датчиков: варианты для формы датчика.</summary>
+public sealed class SensorTypeOptionDto
+{
+    public string System { get; init; } = string.Empty;
+    public string SType { get; init; } = string.Empty;
+}
+
 public sealed class CreateSensorRequest
 {
     public int Id { get; init; }
