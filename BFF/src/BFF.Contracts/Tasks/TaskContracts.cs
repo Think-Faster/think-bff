@@ -39,6 +39,22 @@ public sealed class WorkTaskDto
     public IReadOnlyList<TaskAssignmentDto> Assignments { get; init; } = Array.Empty<TaskAssignmentDto>();
     public IReadOnlyList<TaskReportDto> Reports { get; init; } = Array.Empty<TaskReportDto>();
     public IReadOnlyList<TaskReturnDto> Returns { get; init; } = Array.Empty<TaskReturnDto>();
+
+    /// <summary>Код пикета заявки (PicketId) из справочника — чтобы диспетчер видел, куда ехать.</summary>
+    public string? PicketCode { get; init; }
+
+    /// <summary>Датчики заявки (SensorIds) из справочника при чтении: имя, тип, пикет. Нет в справочнике — только SensorId.</summary>
+    public IReadOnlyList<TaskSensorDto> Sensors { get; init; } = Array.Empty<TaskSensorDto>();
+}
+
+/// <summary>Датчик заявки из справочника: чем его назвать и на каком пикете искать.</summary>
+public sealed class TaskSensorDto
+{
+    public int SensorId { get; init; }
+    public string? Name { get; init; }
+    public string? SType { get; init; }
+    public long? PicketId { get; init; }
+    public string? PicketCode { get; init; }
 }
 
 public sealed class CreateWorkTaskRequest
