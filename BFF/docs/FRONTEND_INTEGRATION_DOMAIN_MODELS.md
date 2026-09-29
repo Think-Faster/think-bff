@@ -260,9 +260,19 @@ interface FactAlertDto {
   lastAt: string;      // последнее время эпизода по сообщению модели
   live: boolean;       // lastAt не старше 2 ч — эпизод идёт
   triggerSensorIds: number[];
-  status: string;
+  status: string;      // служебное, всегда "active"; идёт ли эпизод — live. В UI не показывать
   route: FactRoutePointDto[]; // маршрут нарушителя по времени, только у intrusion; иначе []
   detailsJson: string | null; // JSON, см. FactDetails
+  sensors: FactSensorDto[];   // датчики эпизода (сработавшие и маршрут) из справочника
+}
+
+// Датчик эпизода: как назвать и где искать. Нет в справочнике — только sensorId.
+interface FactSensorDto {
+  sensorId: number;
+  name: string | null;
+  sType: string | null;
+  picketId: number | null;
+  picketCode: string | null;
 }
 
 // Точка маршрута: сработка датчика охраны. Координаты и пикет — у датчика (SensorDto, слой карты).

@@ -147,15 +147,40 @@ public sealed class FactNotifier
         {
             lines.Add("Объект не видно — возможна авария.");
         }
+        if (Where(alert) is { } where)
+        {
+            lines.Add(where);
+        }
+
         if (!string.IsNullOrWhiteSpace(context.Note))
         {
             lines.Add(context.WorkId is { } work ? $"{context.Note} (работа {work})." : $"{context.Note}.");
         }
 
-        lines.Add($"Заявка по факту: {alert.Id}.");
+        lines.Add($"Номер эпизода в журнале данных: {alert.Id}.");
         var subject = alert.Type == PredictionType.Blind
             ? $"{group}, возможна авария — {type.ToLowerInvariant()}: {place}"
             : $"{group} — {type.ToLowerInvariant()}: {place}";
         return (subject, string.Join('\n', lines));
+    }
+
+    // Сколько датчиков перечислять в письме: дальше — числом, полный список в журнале данных.
+    private const int MaxListedSensors = 5;
+
+    /// <summary>Где искать: сработавшие датчики с пикетом из справочника (BFF подставляет при записи).</summary>
+    private static string? Where(FactAlertDto alert)
+    {
+        if (alert.Sensors.Count == 0)
+        {
+            return null;
+        }
+
+        var listed = alert.Sensors.Take(MaxListedSensors).Select(s =>
+        {
+            var name = string.IsNullOrWhiteSpace(s.Name) ? $"датчик №{s.SensorId}" : s.Name;
+            return s.PicketCode is { Length: > 0 } picket ? $"{name} ({picket})" : name;
+        }).ToList();
+        var rest = alert.Sensors.Count - listed.Count;
+        return $"Сработали: {string.Join(", ", listed)}{(rest > 0 ? $" и ещё {rest}" : "")}.";
     }
 }

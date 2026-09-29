@@ -485,7 +485,42 @@ public sealed class PredictionService : IPredictionService
         var items = await query.OrderByDescending(a => a.StartedAt).Skip((page - 1) * pageSize).Take(pageSize)
             .Select(a => ToDto(a)).ToListAsync(ct);
 
-        return new PagedResult<FactAlertDto> { Items = items, Total = total, Page = page, PageSize = pageSize };
+        return new PagedResult<FactAlertDto>
+        {
+            Items = await WithSensorsAsync(items, ct), Total = total, Page = page, PageSize = pageSize,
+        };
+    }
+
+    // Датчики эпизодов страницы одним запросом к справочнику: имя, тип и код пикета.
+    private async Task<IReadOnlyList<FactAlertDto>> WithSensorsAsync(IReadOnlyList<FactAlertDto> items, CancellationToken ct)
+    {
+        var ids = items.SelectMany(a => a.TriggerSensorIds.Concat(a.Route.Select(r => r.SensorId))).Distinct().ToArray();
+        if (ids.Length == 0)
+        {
+            return items;
+        }
+
+        var sensors = await _context.Sensors.AsNoTracking().Where(s => ids.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => new { s.Name, s.SType, s.PicketId }, ct);
+        var picketIds = sensors.Values.Select(s => s.PicketId).OfType<long>().Distinct().ToArray();
+        var pickets = await _context.Pickets.AsNoTracking().Where(p => picketIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, p => p.Code, ct);
+
+        return items.Select(a => new FactAlertDto
+        {
+            Id = a.Id, ObjectId = a.ObjectId, Type = a.Type, Group = a.Group, StartedAt = a.StartedAt,
+            AnnouncedAt = a.AnnouncedAt, LastAt = a.LastAt, Live = a.Live, TriggerSensorIds = a.TriggerSensorIds,
+            Status = a.Status, Route = a.Route, DetailsJson = a.DetailsJson,
+            Sensors = a.TriggerSensorIds.Concat(a.Route.Select(r => r.SensorId)).Distinct()
+                .Select(id => sensors.GetValueOrDefault(id) is { } s
+                    ? new FactSensorDto
+                    {
+                        SensorId = id, Name = s.Name, SType = s.SType, PicketId = s.PicketId,
+                        PicketCode = s.PicketId is { } pid ? pickets.GetValueOrDefault(pid) : null,
+                    }
+                    : new FactSensorDto { SensorId = id })
+                .ToArray(),
+        }).ToArray();
     }
 
     public async Task<FactAlertDto> CreateFactAlertAsync(CreateFactAlertRequest request, CancellationToken ct)
@@ -526,7 +561,8 @@ public sealed class PredictionService : IPredictionService
 
         if (existing is null)
         {
-            return (await CreateFactAlertAsync(request, ct), true);
+            var created = await CreateFactAlertAsync(request, ct);
+            return ((await WithSensorsAsync(new[] { created }, ct))[0], true);
         }
 
         if (!announcement && request.LastAt is { } lastAt && lastAt > existing.LastAt)
@@ -537,7 +573,7 @@ public sealed class PredictionService : IPredictionService
             await _context.SaveChangesAsync(ct);
         }
 
-        return (ToDto(existing), false);
+        return ((await WithSensorsAsync(new[] { ToDto(existing) }, ct))[0], false);
     }
 
     private static PredictionDto ToDto(Prediction p, DateTimeOffset? mutedUntil = null) => new()

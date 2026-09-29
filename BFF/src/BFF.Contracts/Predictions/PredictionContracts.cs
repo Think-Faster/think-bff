@@ -174,9 +174,25 @@ public sealed class FactAlertDto
     public bool Live { get; init; }
 
     public IReadOnlyList<int> TriggerSensorIds { get; init; } = Array.Empty<int>();
+
+    /// <summary>Служебный статус записи, всегда "active": эпизод идёт или нет — Live.</summary>
     public string Status { get; init; } = string.Empty;
     public IReadOnlyList<FactRoutePointDto> Route { get; init; } = Array.Empty<FactRoutePointDto>();
     public string? DetailsJson { get; init; }
+
+    /// <summary>Датчики эпизода (сработавшие и точки маршрута) из справочника при чтении: имя, тип, пикет.
+    /// Модель пикетов не знает (§13.11), без этого в журнале только номера.</summary>
+    public IReadOnlyList<FactSensorDto> Sensors { get; init; } = Array.Empty<FactSensorDto>();
+}
+
+/// <summary>Датчик эпизода по факту из справочника: чем его назвать и где искать.</summary>
+public sealed class FactSensorDto
+{
+    public int SensorId { get; init; }
+    public string? Name { get; init; }
+    public string? SType { get; init; }
+    public long? PicketId { get; init; }
+    public string? PicketCode { get; init; }
 }
 
 /// <summary>Точка маршрута нарушителя (§13.11): сработка датчика охраны. Координаты — у датчика в справочнике.</summary>
