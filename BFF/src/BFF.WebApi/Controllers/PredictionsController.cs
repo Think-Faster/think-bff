@@ -37,6 +37,11 @@ public sealed class PredictionsController : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
         => Ok(await _predictionService.ListAsync(objectId, status, page, pageSize, ct));
 
+    /// <summary>Сводка журнала: сверка с моделью (§9.8) и «всё ли в норме».</summary>
+    [HttpGet("predictions/stats")]
+    [RequirePermission(ResourceCodes.Predictions, PermissionFlags.Read)]
+    public async Task<IActionResult> Stats(CancellationToken ct) => Ok(await _predictionService.StatsAsync(ct));
+
     [HttpGet("predictions/{id:guid}")]
     [RequirePermission(ResourceCodes.Predictions, PermissionFlags.Read)]
     public async Task<IActionResult> Get(Guid id, CancellationToken ct)
@@ -57,12 +62,15 @@ public sealed class PredictionsController : ControllerBase
     [RequirePermission(ResourceCodes.Predictions, PermissionFlags.Update)]
     public async Task<IActionResult> Decide(
         Guid id, [FromBody] CreatePredictionDecisionRequest request, [FromServices] ModelDecisionRelay relay,
-        CancellationToken ct)
+        [FromServices] IPermissionService permissions, CancellationToken ct)
     {
         await _decisionValidator.ValidateAndThrowAsync(request, ct);
         var currentUser = HttpContext.GetCurrentUser()!;
+        // Заглушить — только predictions:manage (главный диспетчер, админ); проверка — в сервисе.
+        var canManage = await permissions.HasPermissionAsync(
+            currentUser.UserId, ResourceCodes.Predictions, PermissionFlags.Manage, ct);
         // Take заводит заявку (или прикрепляет к request.TaskId) — её id в TaskId ответа.
-        var result = await _predictionService.DecideAsync(id, currentUser.UserId, request, ct);
+        var result = await _predictionService.DecideAsync(id, currentUser.UserId, request, canManage, ct);
         await relay.DecisionAsync(HttpContext, result, ct);
         return Ok(result);
     }

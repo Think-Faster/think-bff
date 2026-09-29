@@ -12,6 +12,10 @@ public sealed class Prediction
     public double Score { get; set; }
     public double Threshold { get; set; }
     public bool Alarm { get; set; }
+
+    /// <summary>Час, в котором модель впервые не подтвердила тревогу (alarm=false); пока горит — null.</summary>
+    public DateTimeOffset? AlarmEndedAt { get; set; }
+
     public double Probability { get; set; }
     public double Confidence { get; set; }
     public int SinceHours { get; set; }

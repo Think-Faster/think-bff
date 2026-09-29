@@ -12,6 +12,10 @@ public sealed class PredictionListItemDto
     public DateTimeOffset HourEnd { get; init; }
     public int SinceHours { get; init; }
     public PredictionStatus Status { get; init; }
+
+    /// <summary>Тревога модели ещё горит; false — кончилась в AlarmEndedAt.</summary>
+    public bool Alarm { get; init; }
+    public DateTimeOffset? AlarmEndedAt { get; init; }
 }
 
 public sealed class PredictionDto
@@ -24,6 +28,7 @@ public sealed class PredictionDto
     public double Score { get; init; }
     public double Threshold { get; init; }
     public bool Alarm { get; init; }
+    public DateTimeOffset? AlarmEndedAt { get; init; }
     public double Probability { get; init; }
     public double Confidence { get; init; }
     public int SinceHours { get; init; }
@@ -34,6 +39,9 @@ public sealed class PredictionDto
     public string? ModelVersionId { get; init; }
     public PredictionStatus Status { get; init; }
     public string? MutedReason { get; init; }
+
+    /// <summary>До какого времени заглушена пара объект-тип — из последнего решения Mute; не заглушен — null.</summary>
+    public DateTimeOffset? MutedUntil { get; init; }
     public IReadOnlyList<PredictionFactorDto> Factors { get; init; } = Array.Empty<PredictionFactorDto>();
     public IReadOnlyList<PredictionEvidenceDto> Evidence { get; init; } = Array.Empty<PredictionEvidenceDto>();
 }
@@ -41,6 +49,10 @@ public sealed class PredictionDto
 public sealed class PredictionFactorDto
 {
     public string Feature { get; init; } = string.Empty;
+
+    /// <summary>Подпись признака словами (reasons[].label модели); нет — показывают Feature.</summary>
+    public string? Label { get; init; }
+
     public double Value { get; init; }
     public double Weight { get; init; }
     public string Direction { get; init; } = string.Empty;
@@ -52,6 +64,50 @@ public sealed class PredictionEvidenceDto
     public long? PicketId { get; init; }
     public DateTimeOffset Ts { get; init; }
     public double? Value { get; init; }
+
+    /// <summary>Значение дискретного канала текстом («Обнаружен дым»), когда оно не число.</summary>
+    public string? ValueText { get; init; }
+
+    /// <summary>Из справочника датчиков и пикетов при чтении карточки; во входящем запросе не нужны.</summary>
+    public string? SensorName { get; init; }
+    public string? SensorType { get; init; }
+    public string? PicketCode { get; init; }
+}
+
+/// <summary>Сводка «Журнала прогнозов» (GET /predictions/stats): сколько карточек и в каком состоянии.
+/// Сверка с моделью: ActiveAlarms по типу ≈ last_tick.alarms_by_type из /api/ml/status (§9.8).</summary>
+public sealed class PredictionStatsDto
+{
+    /// <summary>Последний час, за который модель прислала прогноз по карточке; нет карточек — null.</summary>
+    public DateTimeOffset? LastHourEnd { get; init; }
+
+    public int ActiveAlarms { get; init; }
+
+    /// <summary>Тревога числится горящей, но модель не подтверждала её дольше часа после LastHourEnd —
+    /// сообщения потерялись. В норме 0.</summary>
+    public int StaleAlarms { get; init; }
+
+    public int Open { get; init; }
+    public int CreatedLast24h { get; init; }
+    public int EndedLast24h { get; init; }
+    public IReadOnlyList<PredictionTypeStatsDto> ByType { get; init; } = Array.Empty<PredictionTypeStatsDto>();
+}
+
+public sealed class PredictionTypeStatsDto
+{
+    public PredictionType Type { get; init; }
+
+    /// <summary>Карточки, у которых тревога модели ещё горит (любой статус).</summary>
+    public int ActiveAlarms { get; init; }
+
+    /// <summary>Ждут решения диспетчера: New и InReview.</summary>
+    public int Open { get; init; }
+
+    public int Taken { get; init; }
+    public int Muted { get; init; }
+    public int Rejected { get; init; }
+    public int CreatedLast24h { get; init; }
+    public int EndedLast24h { get; init; }
 }
 
 /// <summary>Created by the future tf.forecast.results Kafka consumer (not yet built) or, for now,

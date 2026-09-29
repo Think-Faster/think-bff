@@ -147,7 +147,8 @@ type PredictionType =
 // Авария (fire, gas, flood, intrusion, temperature) даёт объекту ALARM; инцидент (equipmentFailure,
 // sensorFailure, blind) — нет. У blind — пометка «возможна авария».
 type AlertGroup = "accident" | "incident";
-type PredictionStatus = "new" | "inReview" | "taken" | "rejected" | "muted" | "closed";
+// expired — тревога модели кончилась (alarm=false), решения не было
+type PredictionStatus = "new" | "inReview" | "taken" | "rejected" | "muted" | "closed" | "expired";
 type DecisionAction = "take" | "reject" | "mute" | "reopen";
 
 interface PredictionListItemDto {
@@ -159,10 +160,13 @@ interface PredictionListItemDto {
   hourEnd: string;
   sinceHours: number;
   status: PredictionStatus;
+  alarm: boolean;               // тревога модели ещё горит
+  alarmEndedAt: string | null;  // час, в котором модель её не подтвердила
 }
 
 interface PredictionFactorDto {
-  feature: string;
+  feature: string;       // код признака модели
+  label: string | null;  // подпись словами («Снятий с охраны за 7 сут»); нет — показывать feature
   value: number;
   weight: number;
   direction: string;
@@ -173,6 +177,32 @@ interface PredictionEvidenceDto {
   picketId: number | null; // pickets.id (bigint), список — GET /objects/{id}/pickets
   ts: string;
   value: number | null;
+  valueText: string | null;   // значение дискретного канала («Обнаружен дым»)
+  sensorName: string | null;  // из справочника при чтении карточки
+  sensorType: string | null;
+  picketCode: string | null;
+}
+
+// GET /predictions/stats
+interface PredictionTypeStatsDto {
+  type: PredictionType;
+  activeAlarms: number;  // тревога модели горит (любой статус)
+  open: number;          // new + inReview
+  taken: number;
+  muted: number;
+  rejected: number;
+  createdLast24h: number;
+  endedLast24h: number;
+}
+
+interface PredictionStatsDto {
+  lastHourEnd: string | null;
+  activeAlarms: number;
+  staleAlarms: number;   // модель не подтверждала дольше часа — потерялись сообщения, в норме 0
+  open: number;
+  createdLast24h: number;
+  endedLast24h: number;
+  byType: PredictionTypeStatsDto[];
 }
 
 interface PredictionDto {
@@ -181,10 +211,11 @@ interface PredictionDto {
   type: PredictionType;
   hourEnd: string;
   horizonHours: number;
-  score: number;
-  threshold: number;
+  score: number;       // место часа в распределении парка (0..1), НЕ вероятность
+  threshold: number;   // порог тревоги по той же шкале
   alarm: boolean;
-  probability: number;
+  alarmEndedAt: string | null;
+  probability: number; // калиброванная вероятность события за горизонт; 0 — калибровки нет
   confidence: number;
   sinceHours: number;
   topic: string;
@@ -194,6 +225,7 @@ interface PredictionDto {
   modelVersionId: string | null;
   status: PredictionStatus;
   mutedReason: string | null;
+  mutedUntil: string | null;   // status === "muted": до какого времени
   factors: PredictionFactorDto[];
   evidence: PredictionEvidenceDto[];
 }
@@ -548,9 +580,10 @@ interface WorkScheduleEntryDto {
 | Метод | Путь | Право | Ответ |
 | --- | --- | --- | --- |
 | GET | `/predictions?objectId=&status=&page=&pageSize=` | `predictions:read` | `PagedResult<PredictionListItemDto>` |
-| GET | `/predictions/{id}` | `predictions:read` | `PredictionDto` (с `factors`/`evidence`) |
+| GET | `/predictions/stats` | `predictions:read` | `PredictionStatsDto` — сводка журнала и сверка с моделью (`/api/ml/status` → `last_tick.alarms_by_type`) |
+| GET | `/predictions/{id}` | `predictions:read` | `PredictionDto` (с `factors`/`evidence`; у свидетелей — имя датчика и код пикета) |
 | POST | `/predictions` | `predictions:create` | `201` + `PredictionDto`. Дедуп по `(objectId, type, hourEnd, modelVersionId)` — повтор вернёт уже существующий, не создаст дубль |
-| POST | `/predictions/{id}/decisions` | `predictions:update` | `200` + `PredictionDecisionDto`. Меняет `status` прогноза (`take`→`taken`, `reject`→`rejected`, `mute`→`muted`, `reopen`→`inReview`). `take`/`reject`/`mute` — только из `new`/`inReview`, иначе `409 prediction_already_decided`; `reopen` — только из `taken`/`rejected`/`muted`, иначе `409 invalid_status`. `take` сам заводит заявку (`inWork`, диспетчер — вы) и возвращает её id в `taskId`. Решение уходит в модель (`tf.model.commands`, ML/INTEGRATION.md §13.3) |
+| POST | `/predictions/{id}/decisions` | `predictions:update` | `200` + `PredictionDecisionDto`. Меняет `status` прогноза (`take`→`taken`, `reject`→`rejected`, `mute`→`muted`, `reopen`→`inReview`). `take`/`reject`/`mute` — только из `new`/`inReview`, иначе `409 prediction_already_decided`; `reopen` — только из `taken`/`rejected`/`muted`/`expired`, иначе `409 invalid_status`. `mute` и `reopen` заглушённого — только с `predictions:manage`, иначе `403 permission_denied`. `take` сам заводит заявку (`inWork`, диспетчер — вы) и возвращает её id в `taskId`. Решение уходит в модель (`tf.model.commands`, ML/INTEGRATION.md §13.3) |
 | GET | `/fact-alerts?objectId=&live=&page=&pageSize=` | `predictions:read` | `PagedResult<FactAlertDto>`, свежие по `startedAt` сверху. `live=true` — только идущие эпизоды (для слоя маршрутов на карте), `false` — только прошедшие |
 | POST | `/fact-alerts` | `predictions:create` | `201` + `FactAlertDto` |
 
