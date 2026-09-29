@@ -15,6 +15,7 @@ public sealed class PredictionFactorConfiguration : IEntityTypeConfiguration<Pre
 
         builder.Property(f => f.PredictionId).HasColumnName("prediction_id");
         builder.Property(f => f.Feature).HasColumnName("feature").IsRequired();
+        builder.Property(f => f.Label).HasColumnName("label").HasMaxLength(200);
         builder.Property(f => f.Value).HasColumnName("value");
         builder.Property(f => f.Weight).HasColumnName("weight");
         builder.Property(f => f.Direction).HasColumnName("direction").IsRequired();

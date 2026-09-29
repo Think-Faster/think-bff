@@ -20,6 +20,7 @@ public sealed class PredictionConfiguration : IEntityTypeConfiguration<Predictio
         builder.Property(p => p.Score).HasColumnName("score");
         builder.Property(p => p.Threshold).HasColumnName("threshold");
         builder.Property(p => p.Alarm).HasColumnName("alarm");
+        builder.Property(p => p.AlarmEndedAt).HasColumnName("alarm_ended_at");
         builder.Property(p => p.Probability).HasColumnName("probability");
         builder.Property(p => p.Confidence).HasColumnName("confidence");
         builder.Property(p => p.SinceHours).HasColumnName("since_hours");

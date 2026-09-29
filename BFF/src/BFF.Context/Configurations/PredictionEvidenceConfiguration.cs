@@ -18,6 +18,7 @@ public sealed class PredictionEvidenceConfiguration : IEntityTypeConfiguration<P
         builder.Property(e => e.PicketId).HasColumnName("picket_id");
         builder.Property(e => e.Ts).HasColumnName("ts");
         builder.Property(e => e.Value).HasColumnName("value");
+        builder.Property(e => e.ValueText).HasColumnName("value_text").HasMaxLength(100);
 
         builder.HasIndex(e => e.PredictionId).HasDatabaseName("ix_prediction_evidence_prediction_id");
     }
