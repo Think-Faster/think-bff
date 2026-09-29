@@ -1,6 +1,6 @@
-# Email-рассылка (`POST /notifications/email`) — для think-front
+# Рассылка — письмо и Telegram (`POST /notifications/email`, `/notifications/telegram`) — для think-front
 
-Короткий документ под одну фичу — отправка письма произвольным получателям с антиспам-лимитом.
+Короткий документ под одну фичу — отправка письма или сообщения в Telegram с антиспам-лимитом.
 Общие соглашения (базовый путь через nginx, авторизация/куки, формат ошибок, гейтинг UI через
 `/permissions/me`) — в [`FRONTEND_INTEGRATION_GROUPS_USERS_PERMISSIONS.md`](FRONTEND_INTEGRATION_GROUPS_USERS_PERMISSIONS.md),
 разделы 1–4, здесь не повторяются.
@@ -85,3 +85,53 @@ interface SendEmailResponse {
 - **`400`** — не прошла валидация: пустой `subject`/`text`, невалидный формат в `emails`, либо оба
   списка получателей пусты.
 - **`403`** — нет права `notifications:create`.
+
+## Telegram: имя в профиле и `POST /notifications/telegram`
+
+Бот не может написать человеку первым, а по `@username` Bot API личные сообщения не шлёт. Поэтому
+подключение — со стороны человека: он указывает имя в Telegram в профиле и нажимает «Старт» у бота.
+Бот (tf-tg) запоминает связь и отвечает «Готово». `/stop` у бота или блокировка бота — связь снимается.
+
+**Поле `telegram`** у `UserDto`, `UserListItemDto`, `CreateUserRequest`, `UpdateUserRequest` и
+`EngineerProfileDto` (это одно и то же поле `users.telegram`) — имя без `@`, нижний регистр, либо `null`.
+В `UpdateUserRequest` и `UpsertEngineerProfileRequest` `null` — не менять, `""` — убрать.
+
+**Свой профиль** — `GET /users/me/telegram`, `PUT /users/me/telegram` `{ username }`:
+
+```ts
+interface TelegramStatusDto {
+  username: string | null; // сохранённое имя, без @
+  linked: boolean | null;  // нажал «Старт» у бота под этим именем; null — неизвестно (Redis недоступен)
+  bot: string | null;      // имя бота без @ — ссылка https://t.me/<bot>; null — бот ещё не запускался
+}
+```
+
+`linked: false` при заполненном имени — показать «откройте бота и нажмите Старт» со ссылкой на бота.
+Имя должно совпадать с тем, что в Telegram (Настройки → Имя пользователя): бот сверяет именно его.
+
+**`POST /notifications/telegram`** — право `notifications:create`, как у письма.
+
+```ts
+interface SendTelegramRequest {
+  subject: string; // жирным первой строкой; обрезается до 255, пробелы схлопываются
+  text: string;    // простой текст; если сообщение не влезает в 4096 символов Telegram — обрезается с «…»
+  userIds: string[]; // хотя бы один; произвольных chat_id/имён ручка не принимает
+  ticketId?: string;
+  kind?: string;
+}
+
+type TelegramSendStatus =
+  | "sent"             // принято в обработку (tf-tg доставит сам; не значит «прочитано»)
+  | "rateLimited"      // этому имени уже слали меньше минуты назад
+  | "userNotFound"
+  | "noTelegramOnFile" // у пользователя не указано имя в Telegram
+  | "notLinked"        // имя указано, но человек не нажал «Старт» у бота — не отправлялось
+  | "failed";          // брокер отверг публикацию
+
+interface TelegramRecipientResultDto { userId: string; username: string | null; status: TelegramSendStatus; }
+interface SendTelegramResponse { requested: number; sent: number; results: TelegramRecipientResultDto[]; }
+```
+
+Всем получателям — одно сообщение `tf.notifications` (`to.usernames`), tf-tg шлёт каждому личное, друг
+друга они не видят. Если Redis недоступен, проверки `notLinked` нет — сообщение ставится в очередь, и
+тем, кто бота не подключил, tf-tg его не отправит (в его логе — «не подключил бота»).

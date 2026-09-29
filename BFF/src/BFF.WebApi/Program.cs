@@ -32,8 +32,11 @@ builder.Services.AddSingleton<AuditWriter>();
 builder.Services.AddSingleton<INoticePublisher, RabbitMqNoticePublisher>();
 builder.Services.AddSingleton<IModelCommandPublisher, RabbitMqModelCommandPublisher>();
 builder.Services.AddScoped<ModelDecisionRelay>();
-builder.Services.AddSingleton<EmailRateLimiter>();
+builder.Services.AddScoped<ModelSettingsRelay>();
+builder.Services.AddSingleton<NotificationRateLimiter>();
+builder.Services.AddSingleton<TelegramLinks>();
 builder.Services.AddScoped<EmailNotificationService>();
+builder.Services.AddScoped<TelegramNotificationService>();
 builder.Services.AddScoped<FactNotifier>();
 builder.Services.AddHostedService<FactResultsConsumer>();
 

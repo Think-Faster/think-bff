@@ -15,7 +15,8 @@ public sealed record FactContext(string? Note = null, long? WorkId = null, strin
 /// Уведомление по факту: всем, кто сейчас на смене по графику и не в отпуске (IDutyService), — письмо на
 /// почту и сообщение в Telegram через tf.notifications (tf-mail и tf-tg в think-infra). Письмо — отдельным
 /// сообщением на адресата, как у POST /notifications/email: получатели не видят друг друга. Telegram —
-/// одно сообщение на все chat_id с тем же notice_id. Ограничение «письмо в минуту» здесь не действует:
+/// одно сообщение на все имена (`to.usernames`), tf-tg шлёт каждому личное; кто не подключил бота, тому
+/// не уйдёт, остальным уйдёт. Ограничение «письмо в минуту» здесь не действует:
 /// событие шлёт система, а не человек, и одно происшествие не должно теряться из-за соседнего.
 /// </summary>
 public sealed class FactNotifier
@@ -53,12 +54,11 @@ public sealed class FactNotifier
             .OfType<string>()
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        var chats = recipients
-            .Select(r => ChatId(r.Telegram))
-            .OfType<object>()
+        var usernames = recipients
+            .Select(r => r.Telegram)
+            .OfType<string>()
             .Distinct()
             .ToList();
-        var skipped = recipients.Count(r => r.Telegram is not null && ChatId(r.Telegram) is null);
 
         var sent = 0;
         var failed = 0;
@@ -77,20 +77,20 @@ public sealed class FactNotifier
         }
 
         var telegram = false;
-        if (chats.Count > 0)
+        if (usernames.Count > 0)
         {
-            var notice = new TelegramNotice(1, Guid.NewGuid(), subject, text, new TelegramTo(chats),
+            var notice = new TelegramNotice(1, Guid.NewGuid(), subject, text, new TelegramTo(Usernames: usernames),
                 ticketId, "fact", context.RequestId);
             telegram = await TryAsync(() => _publisher.PublishTelegramAsync(notice, ct), notice.NoticeId);
         }
 
         _logger.LogInformation(
-            "Fact alert {AlertId} (object {ObjectId}, {Type}): on duty {OnDuty}, emails {Sent}/{Emails}, telegram chats {Chats} ({TelegramState}), telegram not a chat_id {Skipped}",
-            alert.Id, alert.ObjectId, alert.Type, recipients.Count, sent, emails.Count, chats.Count,
-            chats.Count == 0 ? "none" : telegram ? "queued" : "failed", skipped);
+            "Fact alert {AlertId} (object {ObjectId}, {Type}): on duty {OnDuty}, emails {Sent}/{Emails}, telegram users {Telegram} ({TelegramState})",
+            alert.Id, alert.ObjectId, alert.Type, recipients.Count, sent, emails.Count, usernames.Count,
+            usernames.Count == 0 ? "none" : telegram ? "queued" : "failed");
 
         await _audit.WriteAsync(new AuditEvent(
-            "ticket.created", failed == 0 && (chats.Count == 0 || telegram) ? "success" : "error",
+            "ticket.created", failed == 0 && (usernames.Count == 0 || telegram) ? "success" : "error",
             "service", null, "tf-bff", context.RequestId, null, "fact_alert", alert.Id.ToString(),
             new Dictionary<string, object?>
             {
@@ -102,7 +102,7 @@ public sealed class FactNotifier
                 ["on_duty"] = recipients.Count,
                 ["emails_queued"] = sent,
                 ["emails_failed"] = failed,
-                ["telegram_chats"] = telegram ? chats.Count : 0,
+                ["telegram_users"] = telegram ? usernames.Count : 0,
             }));
     }
 
@@ -147,32 +147,40 @@ public sealed class FactNotifier
         {
             lines.Add("Объект не видно — возможна авария.");
         }
+        if (Where(alert) is { } where)
+        {
+            lines.Add(where);
+        }
+
         if (!string.IsNullOrWhiteSpace(context.Note))
         {
             lines.Add(context.WorkId is { } work ? $"{context.Note} (работа {work})." : $"{context.Note}.");
         }
 
-        lines.Add($"Заявка по факту: {alert.Id}.");
+        lines.Add($"Номер эпизода в журнале данных: {alert.Id}.");
         var subject = alert.Type == PredictionType.Blind
             ? $"{group}, возможна авария — {type.ToLowerInvariant()}: {place}"
             : $"{group} — {type.ToLowerInvariant()}: {place}";
         return (subject, string.Join('\n', lines));
     }
 
-    // chat_id — целое число (у групп отрицательное) или "@канал". Имя пользователя (@login) Bot API
-    // не принимает — такое значение tf-tg отклонит, но остальным чатам сообщение всё равно уйдёт.
-    private static object? ChatId(string? telegram)
+    // Сколько датчиков перечислять в письме: дальше — числом, полный список в журнале данных.
+    private const int MaxListedSensors = 5;
+
+    /// <summary>Где искать: сработавшие датчики с пикетом из справочника (BFF подставляет при записи).</summary>
+    private static string? Where(FactAlertDto alert)
     {
-        if (telegram is null)
+        if (alert.Sensors.Count == 0)
         {
             return null;
         }
 
-        if (long.TryParse(telegram, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var id))
+        var listed = alert.Sensors.Take(MaxListedSensors).Select(s =>
         {
-            return id;
-        }
-
-        return telegram.StartsWith('@') && telegram.Length > 1 ? telegram : null;
+            var name = string.IsNullOrWhiteSpace(s.Name) ? $"датчик №{s.SensorId}" : s.Name;
+            return s.PicketCode is { Length: > 0 } picket ? $"{name} ({picket})" : name;
+        }).ToList();
+        var rest = alert.Sensors.Count - listed.Count;
+        return $"Сработали: {string.Join(", ", listed)}{(rest > 0 ? $" и ещё {rest}" : "")}.";
     }
 }

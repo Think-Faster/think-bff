@@ -147,7 +147,8 @@ type PredictionType =
 // Авария (fire, gas, flood, intrusion, temperature) даёт объекту ALARM; инцидент (equipmentFailure,
 // sensorFailure, blind) — нет. У blind — пометка «возможна авария».
 type AlertGroup = "accident" | "incident";
-type PredictionStatus = "new" | "inReview" | "taken" | "rejected" | "muted" | "closed";
+// expired — тревога модели кончилась (alarm=false), решения не было
+type PredictionStatus = "new" | "inReview" | "taken" | "rejected" | "muted" | "closed" | "expired";
 type DecisionAction = "take" | "reject" | "mute" | "reopen";
 
 interface PredictionListItemDto {
@@ -159,10 +160,13 @@ interface PredictionListItemDto {
   hourEnd: string;
   sinceHours: number;
   status: PredictionStatus;
+  alarm: boolean;               // тревога модели ещё горит
+  alarmEndedAt: string | null;  // час, в котором модель её не подтвердила
 }
 
 interface PredictionFactorDto {
-  feature: string;
+  feature: string;       // код признака модели
+  label: string | null;  // подпись словами («Снятий с охраны за 7 сут»); нет — показывать feature
   value: number;
   weight: number;
   direction: string;
@@ -173,6 +177,32 @@ interface PredictionEvidenceDto {
   picketId: number | null; // pickets.id (bigint), список — GET /objects/{id}/pickets
   ts: string;
   value: number | null;
+  valueText: string | null;   // значение дискретного канала («Обнаружен дым»)
+  sensorName: string | null;  // из справочника при чтении карточки
+  sensorType: string | null;
+  picketCode: string | null;
+}
+
+// GET /predictions/stats
+interface PredictionTypeStatsDto {
+  type: PredictionType;
+  activeAlarms: number;  // тревога модели горит (любой статус)
+  open: number;          // new + inReview
+  taken: number;
+  muted: number;
+  rejected: number;
+  createdLast24h: number;
+  endedLast24h: number;
+}
+
+interface PredictionStatsDto {
+  lastHourEnd: string | null;
+  activeAlarms: number;
+  staleAlarms: number;   // модель не подтверждала дольше часа — потерялись сообщения, в норме 0
+  open: number;
+  createdLast24h: number;
+  endedLast24h: number;
+  byType: PredictionTypeStatsDto[];
 }
 
 interface PredictionDto {
@@ -181,10 +211,11 @@ interface PredictionDto {
   type: PredictionType;
   hourEnd: string;
   horizonHours: number;
-  score: number;
-  threshold: number;
+  score: number;       // место часа в распределении парка (0..1), НЕ вероятность
+  threshold: number;   // порог тревоги по той же шкале
   alarm: boolean;
-  probability: number;
+  alarmEndedAt: string | null;
+  probability: number; // калиброванная вероятность события за горизонт; 0 — калибровки нет
   confidence: number;
   sinceHours: number;
   topic: string;
@@ -194,6 +225,7 @@ interface PredictionDto {
   modelVersionId: string | null;
   status: PredictionStatus;
   mutedReason: string | null;
+  mutedUntil: string | null;   // status === "muted": до какого времени
   factors: PredictionFactorDto[];
   evidence: PredictionEvidenceDto[];
 }
@@ -228,9 +260,19 @@ interface FactAlertDto {
   lastAt: string;      // последнее время эпизода по сообщению модели
   live: boolean;       // lastAt не старше 2 ч — эпизод идёт
   triggerSensorIds: number[];
-  status: string;
+  status: string;      // служебное, всегда "active"; идёт ли эпизод — live. В UI не показывать
   route: FactRoutePointDto[]; // маршрут нарушителя по времени, только у intrusion; иначе []
   detailsJson: string | null; // JSON, см. FactDetails
+  sensors: FactSensorDto[];   // датчики эпизода (сработавшие и маршрут) из справочника
+}
+
+// Датчик эпизода: как назвать и где искать. Нет в справочнике — только sensorId.
+interface FactSensorDto {
+  sensorId: number;
+  name: string | null;
+  sType: string | null;
+  picketId: number | null;
+  picketCode: string | null;
 }
 
 // Точка маршрута: сработка датчика охраны. Координаты и пикет — у датчика (SensorDto, слой карты).
@@ -328,6 +370,17 @@ interface WorkTaskDto {
   assignments: TaskAssignmentDto[];
   reports: TaskReportDto[];
   returns: TaskReturnDto[];
+  picketCode: string | null; // код пикета заявки из справочника
+  sensors: TaskSensorDto[];  // sensorIds из справочника: имя, тип, пикет
+}
+
+// Датчик заявки: как назвать и на каком пикете искать. Нет в справочнике — только sensorId.
+interface TaskSensorDto {
+  sensorId: number;
+  name: string | null;
+  sType: string | null;
+  picketId: number | null;
+  picketCode: string | null;
 }
 
 interface CreateWorkTaskRequest {
@@ -423,7 +476,7 @@ interface EngineerProfileDto {
   userId: string;
   brigadeId: string | null;
   phone: string | null;
-  telegram: string | null;
+  telegram: string | null; // users.telegram — то же поле, что у пользователя; в запросе null — не менять
   specialization: string[];
   status: EngineerStatus;
 }
@@ -548,9 +601,10 @@ interface WorkScheduleEntryDto {
 | Метод | Путь | Право | Ответ |
 | --- | --- | --- | --- |
 | GET | `/predictions?objectId=&status=&page=&pageSize=` | `predictions:read` | `PagedResult<PredictionListItemDto>` |
-| GET | `/predictions/{id}` | `predictions:read` | `PredictionDto` (с `factors`/`evidence`) |
+| GET | `/predictions/stats` | `predictions:read` | `PredictionStatsDto` — сводка журнала и сверка с моделью (`/api/ml/status` → `last_tick.alarms_by_type`) |
+| GET | `/predictions/{id}` | `predictions:read` | `PredictionDto` (с `factors`/`evidence`; у свидетелей — имя датчика и код пикета) |
 | POST | `/predictions` | `predictions:create` | `201` + `PredictionDto`. Дедуп по `(objectId, type, hourEnd, modelVersionId)` — повтор вернёт уже существующий, не создаст дубль |
-| POST | `/predictions/{id}/decisions` | `predictions:update` | `200` + `PredictionDecisionDto`. Меняет `status` прогноза (`take`→`taken`, `reject`→`rejected`, `mute`→`muted`, `reopen`→`inReview`). `take`/`reject`/`mute` — только из `new`/`inReview`, иначе `409 prediction_already_decided`; `reopen` — только из `taken`/`rejected`/`muted`, иначе `409 invalid_status`. `take` сам заводит заявку (`inWork`, диспетчер — вы) и возвращает её id в `taskId`. Решение уходит в модель (`tf.model.commands`, ML/INTEGRATION.md §13.3) |
+| POST | `/predictions/{id}/decisions` | `predictions:update` | `200` + `PredictionDecisionDto`. Меняет `status` прогноза (`take`→`taken`, `reject`→`rejected`, `mute`→`muted`, `reopen`→`inReview`). `take`/`reject`/`mute` — только из `new`/`inReview`, иначе `409 prediction_already_decided`; `reopen` — только из `taken`/`rejected`/`muted`/`expired`, иначе `409 invalid_status`. `mute` и `reopen` заглушённого — только с `predictions:manage`, иначе `403 permission_denied`. `take` сам заводит заявку (`inWork`, диспетчер — вы) и возвращает её id в `taskId`. Решение уходит в модель (`tf.model.commands`, ML/INTEGRATION.md §13.3) |
 | GET | `/fact-alerts?objectId=&live=&page=&pageSize=` | `predictions:read` | `PagedResult<FactAlertDto>`, свежие по `startedAt` сверху. `live=true` — только идущие эпизоды (для слоя маршрутов на карте), `false` — только прошедшие |
 | POST | `/fact-alerts` | `predictions:create` | `201` + `FactAlertDto` |
 
@@ -607,6 +661,19 @@ interface WorkScheduleEntryDto {
 
 Все ручки — под правом `model_settings` (`read` для GET, `manage` для любых изменений — единый уровень,
 без отдельных `create`/`update`/`delete`, как и у `permissions`).
+
+**Команды модели.** Версию типа, рабочие доли и игнорируемые периоды хранит модель. Читать их — из
+`GET /api/ml/status` (`model.types`, `settings`, `settings_bounds`, `gaps`, `retrain`), менять — ручками
+ниже. Ответ `202 { commandId, kind }` значит «команда в очереди модели». Применилась ли она, видно по
+номеру версии в следующем `/status`. Брокер недоступен — `503 model_commands_unavailable`.
+
+| Метод | Путь | Право | Тело |
+| --- | --- | --- | --- |
+| POST | `/model-commands/switch` | `model_settings:manage` | `{ type, versionId, reason }` — `type` из `fire, gas, flood, equipment, sensor, intrusion`, `versionId: null` — основная выгрузка |
+| POST | `/model-commands/operating` | `model_settings:manage` | `{ version, reason, types: { <тип>: { share, rejectK } } }` — все 6 типов, `version` = `settings.version + 1`, границы долей — `settings_bounds` |
+| POST | `/model-commands/gaps` | `model_settings:manage` | `{ version, reason, rows: [{ a, b, comment }] }` — вся таблица, `a`/`b` — `ГГГГ-ММ-ДД ЧЧ:ММ` по Москве, `version` = `gaps.version + 1`; модель ставит признак переобучения |
+
+Ручки ниже пишут только в базу BFF: в модель они не уходят и фронтом не используются.
 
 | Метод | Путь | Право | Ответ |
 | --- | --- | --- | --- |

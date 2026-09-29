@@ -36,7 +36,7 @@ BFF ничего секретного нет:
   `AUTH_JWKS_URL` (см. `docs/DECISIONS.md`, «AUTH_JWKS_URL отдаёт PEM-ключ»). Своего JWT-секрета/приватного
   ключа на стороне BFF нет — нечего класть в `app/tf-bff`.
 - Redis подключён (журнал действий — `AuditWriter`, поток Redis `audit`, см. `docs/DECISIONS.md` про
-  Н16; плюс антиспам-лимитер email-рассылки, `EmailRateLimiter`) — путь `secret/tf/redis` заведён в
+  Н16; плюс антиспам-лимитер рассылки, `NotificationRateLimiter`) — путь `secret/tf/redis` заведён в
   `VAULT_SECRET_PATHS` у `tf-bff`.
 - RabbitMQ подключён (публикация email-уведомлений в `tf.notifications` для `tf-mail` — задание
   инфраструктуры, см. `docs/DECISIONS.md`, «Пересмотр после ТЗ инфраструктуры: письма через RabbitMQ, не

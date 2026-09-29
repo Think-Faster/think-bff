@@ -51,6 +51,8 @@ public sealed class PredictionService : IPredictionService
                 HourEnd = p.HourEnd,
                 SinceHours = p.SinceHours,
                 Status = p.Status,
+                Alarm = p.Alarm,
+                AlarmEndedAt = p.AlarmEndedAt,
             })
             .ToListAsync(ct);
 
@@ -65,7 +67,105 @@ public sealed class PredictionService : IPredictionService
             .SingleOrDefaultAsync(p => p.Id == id, ct)
             ?? throw new NotFoundException($"Prediction {id} not found.");
 
-        return ToDto(entity);
+        // Датчик и пикет свидетеля — из справочника при чтении (§9.7: модель пикетов не знает).
+        var sensorIds = entity.Evidence.Select(e => e.SensorId).Distinct().ToArray();
+        var sensors = await _context.Sensors.AsNoTracking().Where(s => sensorIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => new { s.Name, s.SType, s.PicketId }, ct);
+        var picketIds = entity.Evidence.Select(e => e.PicketId).Concat(sensors.Values.Select(s => s.PicketId))
+            .OfType<long>().Distinct().ToArray();
+        var pickets = await _context.Pickets.AsNoTracking().Where(p => picketIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, p => p.Code, ct);
+
+        DateTimeOffset? mutedUntil = null;
+        if (entity.Status == PredictionStatus.Muted)
+        {
+            mutedUntil = await _context.PredictionDecisions.AsNoTracking()
+                .Where(d => d.PredictionId == id && d.Action == DecisionAction.Mute)
+                .OrderByDescending(d => d.DecidedAt)
+                .Select(d => d.MutedUntil)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        var dto = ToDto(entity, mutedUntil);
+        return new PredictionDto
+        {
+            Id = dto.Id, ObjectId = dto.ObjectId, Type = dto.Type, HourEnd = dto.HourEnd,
+            HorizonHours = dto.HorizonHours, Score = dto.Score, Threshold = dto.Threshold, Alarm = dto.Alarm,
+            AlarmEndedAt = dto.AlarmEndedAt, Probability = dto.Probability, Confidence = dto.Confidence,
+            SinceHours = dto.SinceHours, Topic = dto.Topic, Description = dto.Description,
+            Classification = dto.Classification, Recommendation = dto.Recommendation,
+            ModelVersionId = dto.ModelVersionId, Status = dto.Status, MutedReason = dto.MutedReason,
+            MutedUntil = dto.MutedUntil, Factors = dto.Factors,
+            Evidence = entity.Evidence.OrderByDescending(e => e.Ts).Select(e =>
+            {
+                var sensor = sensors.GetValueOrDefault(e.SensorId);
+                var picketId = e.PicketId ?? sensor?.PicketId;
+                return new PredictionEvidenceDto
+                {
+                    SensorId = e.SensorId, PicketId = picketId, Ts = e.Ts, Value = e.Value, ValueText = e.ValueText,
+                    SensorName = sensor?.Name, SensorType = sensor?.SType,
+                    PicketCode = picketId is { } pid ? pickets.GetValueOrDefault(pid) : null,
+                };
+            }).ToArray(),
+        };
+    }
+
+    public async Task<PredictionStatsDto> StatsAsync(CancellationToken ct)
+    {
+        var dayAgo = DateTimeOffset.UtcNow.AddHours(-24);
+        var lastHour = await _context.Predictions.AsNoTracking().MaxAsync(p => (DateTimeOffset?)p.HourEnd, ct);
+        var staleBefore = (lastHour ?? DateTimeOffset.MinValue).AddHours(-1);
+        var rows = await _context.Predictions.AsNoTracking()
+            .GroupBy(p => p.Type)
+            .Select(g => new
+            {
+                Type = g.Key,
+                Active = g.Count(p => p.Alarm),
+                Stale = g.Count(p => p.Alarm && p.HourEnd < staleBefore),
+                Open = g.Count(p => p.Status == PredictionStatus.New || p.Status == PredictionStatus.InReview),
+                Taken = g.Count(p => p.Status == PredictionStatus.Taken),
+                Muted = g.Count(p => p.Status == PredictionStatus.Muted),
+                Rejected = g.Count(p => p.Status == PredictionStatus.Rejected),
+                Created = g.Count(p => p.CreatedAt >= dayAgo),
+                Ended = g.Count(p => p.AlarmEndedAt >= dayAgo),
+            })
+            .ToListAsync(ct);
+
+        return new PredictionStatsDto
+        {
+            LastHourEnd = lastHour,
+            ActiveAlarms = rows.Sum(r => r.Active),
+            StaleAlarms = rows.Sum(r => r.Stale),
+            Open = rows.Sum(r => r.Open),
+            CreatedLast24h = rows.Sum(r => r.Created),
+            EndedLast24h = rows.Sum(r => r.Ended),
+            ByType = rows.OrderBy(r => r.Type).Select(r => new PredictionTypeStatsDto
+            {
+                Type = r.Type, ActiveAlarms = r.Active, Open = r.Open, Taken = r.Taken, Muted = r.Muted,
+                Rejected = r.Rejected, CreatedLast24h = r.Created, EndedLast24h = r.Ended,
+            }).ToArray(),
+        };
+    }
+
+    public async Task<int> EndAlarmsAsync(
+        int objectId, IReadOnlyCollection<PredictionType> types, DateTimeOffset hourEnd, CancellationToken ct)
+    {
+        if (types.Count == 0)
+        {
+            return 0;
+        }
+
+        // Одним UPDATE на сообщение: карточки пары, у которых тревога горела часом раньше. Без решения —
+        // «истёк»; взятые, заглушенные и отклонённые статус сохраняют, но видно, что тревоги больше нет.
+        var list = types.ToArray();
+        return await _context.Predictions
+            .Where(p => p.ObjectId == objectId && list.Contains(p.Type) && p.Alarm && p.HourEnd < hourEnd)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(p => p.Alarm, false)
+                .SetProperty(p => p.AlarmEndedAt, hourEnd)
+                .SetProperty(p => p.Status, p => p.Status == PredictionStatus.New || p.Status == PredictionStatus.InReview
+                    ? PredictionStatus.Expired
+                    : p.Status), ct);
     }
 
     public async Task<PredictionDto> CreateAsync(CreatePredictionRequest request, CancellationToken ct)
@@ -109,6 +209,7 @@ public sealed class PredictionService : IPredictionService
                 Id = Guid.NewGuid(),
                 PredictionId = entity.Id,
                 Feature = f.Feature,
+                Label = f.Label,
                 Value = f.Value,
                 Weight = f.Weight,
                 Direction = f.Direction,
@@ -125,6 +226,7 @@ public sealed class PredictionService : IPredictionService
                 PicketId = e.PicketId,
                 Ts = e.Ts,
                 Value = e.Value,
+                ValueText = e.ValueText,
             }).ToList();
         }
 
@@ -145,7 +247,9 @@ public sealed class PredictionService : IPredictionService
 
         // Эпизод начался since_hours назад; прогноз за час до начала — ещё тот же ряд (склейка модели).
         var episodeStart = request.HourEnd.AddHours(-Math.Max(request.SinceHours, 0) - 1);
-        if (latest is null || latest.HourEnd < episodeStart)
+        // Тревога пары уже кончилась (EndAlarmsAsync) — новая тревога значит новый эпизод и новую карточку.
+        if (latest is null || latest.HourEnd < episodeStart
+            || (latest.AlarmEndedAt is { } ended && request.HourEnd >= ended))
         {
             return (await CreateAsync(request, ct), true);
         }
@@ -161,6 +265,7 @@ public sealed class PredictionService : IPredictionService
         latest.Score = request.Score;
         latest.Threshold = request.Threshold;
         latest.Alarm = request.Alarm;
+        latest.AlarmEndedAt = null;
         latest.Probability = request.Probability;
         latest.Confidence = request.Confidence;
         latest.SinceHours = request.SinceHours;
@@ -174,14 +279,14 @@ public sealed class PredictionService : IPredictionService
         _context.PredictionFactors.AddRange((request.Factors ?? Array.Empty<PredictionFactorDto>()).Select(f =>
             new PredictionFactor
             {
-                Id = Guid.NewGuid(), PredictionId = latest.Id, Feature = f.Feature, Value = f.Value,
+                Id = Guid.NewGuid(), PredictionId = latest.Id, Feature = f.Feature, Label = f.Label, Value = f.Value,
                 Weight = f.Weight, Direction = f.Direction,
             }));
         _context.PredictionEvidence.AddRange((request.Evidence ?? Array.Empty<PredictionEvidenceDto>()).Select(e =>
             new PredictionEvidence
             {
                 Id = Guid.NewGuid(), PredictionId = latest.Id, SensorId = e.SensorId, PicketId = e.PicketId,
-                Ts = e.Ts, Value = e.Value,
+                Ts = e.Ts, Value = e.Value, ValueText = e.ValueText,
             }));
         await _context.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
@@ -211,17 +316,25 @@ public sealed class PredictionService : IPredictionService
             ModelVersionId = request.ModelVersionId, Factors = request.Factors,
             Evidence = evidence.Select(e => new PredictionEvidenceDto
             {
-                SensorId = e.SensorId, Ts = e.Ts, Value = e.Value,
+                SensorId = e.SensorId, Ts = e.Ts, Value = e.Value, ValueText = e.ValueText,
                 PicketId = e.PicketId ?? pickets.GetValueOrDefault(e.SensorId),
             }).ToArray(),
         };
     }
 
     public async Task<PredictionDecisionDto> DecideAsync(
-        Guid predictionId, Guid userId, CreatePredictionDecisionRequest request, CancellationToken ct)
+        Guid predictionId, Guid userId, CreatePredictionDecisionRequest request, bool canManage, CancellationToken ct)
     {
         var prediction = await _context.Predictions.AsNoTracking().SingleOrDefaultAsync(p => p.Id == predictionId, ct)
             ?? throw new NotFoundException($"Prediction {predictionId} not found.");
+
+        // Заглушить пару объект-тип и снять заглушку — решение главного диспетчера (predictions:manage):
+        // молчание прячет тревоги от всех диспетчеров смены (§13.3).
+        if (!canManage && (request.Action == DecisionAction.Mute
+                || (request.Action == DecisionAction.Reopen && prediction.Status == PredictionStatus.Muted)))
+        {
+            throw new ForbiddenException("Muting a prediction requires predictions:manage.");
+        }
 
         // Take / reject / mute — только по открытому прогнозу, reopen — только по решённому.
         // Условие на статус внутри UPDATE: второй диспетчер, нажавший одновременно, получит 409, а не
@@ -333,8 +446,9 @@ public sealed class PredictionService : IPredictionService
 
     private static readonly PredictionStatus[] Open = { PredictionStatus.New, PredictionStatus.InReview };
 
+    // Истёкшую карточку тоже можно вернуть в работу: тревога кончилась, а диспетчер хочет её разобрать.
     private static readonly PredictionStatus[] Decided =
-        { PredictionStatus.Taken, PredictionStatus.Rejected, PredictionStatus.Muted };
+        { PredictionStatus.Taken, PredictionStatus.Rejected, PredictionStatus.Muted, PredictionStatus.Expired };
 
     /// <summary>Номер заявки, заведённой по прогнозу: З-ГГММДД-ЧЧММСС-NN — тот же вид, что даёт фронт.</summary>
     private async Task<string> NewTaskNumberAsync(DateTimeOffset now, CancellationToken ct)
@@ -371,7 +485,42 @@ public sealed class PredictionService : IPredictionService
         var items = await query.OrderByDescending(a => a.StartedAt).Skip((page - 1) * pageSize).Take(pageSize)
             .Select(a => ToDto(a)).ToListAsync(ct);
 
-        return new PagedResult<FactAlertDto> { Items = items, Total = total, Page = page, PageSize = pageSize };
+        return new PagedResult<FactAlertDto>
+        {
+            Items = await WithSensorsAsync(items, ct), Total = total, Page = page, PageSize = pageSize,
+        };
+    }
+
+    // Датчики эпизодов страницы одним запросом к справочнику: имя, тип и код пикета.
+    private async Task<IReadOnlyList<FactAlertDto>> WithSensorsAsync(IReadOnlyList<FactAlertDto> items, CancellationToken ct)
+    {
+        var ids = items.SelectMany(a => a.TriggerSensorIds.Concat(a.Route.Select(r => r.SensorId))).Distinct().ToArray();
+        if (ids.Length == 0)
+        {
+            return items;
+        }
+
+        var sensors = await _context.Sensors.AsNoTracking().Where(s => ids.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => new { s.Name, s.SType, s.PicketId }, ct);
+        var picketIds = sensors.Values.Select(s => s.PicketId).OfType<long>().Distinct().ToArray();
+        var pickets = await _context.Pickets.AsNoTracking().Where(p => picketIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, p => p.Code, ct);
+
+        return items.Select(a => new FactAlertDto
+        {
+            Id = a.Id, ObjectId = a.ObjectId, Type = a.Type, Group = a.Group, StartedAt = a.StartedAt,
+            AnnouncedAt = a.AnnouncedAt, LastAt = a.LastAt, Live = a.Live, TriggerSensorIds = a.TriggerSensorIds,
+            Status = a.Status, Route = a.Route, DetailsJson = a.DetailsJson,
+            Sensors = a.TriggerSensorIds.Concat(a.Route.Select(r => r.SensorId)).Distinct()
+                .Select(id => sensors.GetValueOrDefault(id) is { } s
+                    ? new FactSensorDto
+                    {
+                        SensorId = id, Name = s.Name, SType = s.SType, PicketId = s.PicketId,
+                        PicketCode = s.PicketId is { } pid ? pickets.GetValueOrDefault(pid) : null,
+                    }
+                    : new FactSensorDto { SensorId = id })
+                .ToArray(),
+        }).ToArray();
     }
 
     public async Task<FactAlertDto> CreateFactAlertAsync(CreateFactAlertRequest request, CancellationToken ct)
@@ -412,7 +561,8 @@ public sealed class PredictionService : IPredictionService
 
         if (existing is null)
         {
-            return (await CreateFactAlertAsync(request, ct), true);
+            var created = await CreateFactAlertAsync(request, ct);
+            return ((await WithSensorsAsync(new[] { created }, ct))[0], true);
         }
 
         if (!announcement && request.LastAt is { } lastAt && lastAt > existing.LastAt)
@@ -423,10 +573,10 @@ public sealed class PredictionService : IPredictionService
             await _context.SaveChangesAsync(ct);
         }
 
-        return (ToDto(existing), false);
+        return ((await WithSensorsAsync(new[] { ToDto(existing) }, ct))[0], false);
     }
 
-    private static PredictionDto ToDto(Prediction p) => new()
+    private static PredictionDto ToDto(Prediction p, DateTimeOffset? mutedUntil = null) => new()
     {
         Id = p.Id,
         ObjectId = p.ObjectId,
@@ -436,6 +586,7 @@ public sealed class PredictionService : IPredictionService
         Score = p.Score,
         Threshold = p.Threshold,
         Alarm = p.Alarm,
+        AlarmEndedAt = p.AlarmEndedAt,
         Probability = p.Probability,
         Confidence = p.Confidence,
         SinceHours = p.SinceHours,
@@ -446,13 +597,14 @@ public sealed class PredictionService : IPredictionService
         ModelVersionId = p.ModelVersionId,
         Status = p.Status,
         MutedReason = p.MutedReason,
+        MutedUntil = mutedUntil,
         Factors = p.Factors.Select(f => new PredictionFactorDto
         {
-            Feature = f.Feature, Value = f.Value, Weight = f.Weight, Direction = f.Direction,
+            Feature = f.Feature, Label = f.Label, Value = f.Value, Weight = f.Weight, Direction = f.Direction,
         }).ToArray(),
         Evidence = p.Evidence.Select(e => new PredictionEvidenceDto
         {
-            SensorId = e.SensorId, PicketId = e.PicketId, Ts = e.Ts, Value = e.Value,
+            SensorId = e.SensorId, PicketId = e.PicketId, Ts = e.Ts, Value = e.Value, ValueText = e.ValueText,
         }).ToArray(),
     };
 

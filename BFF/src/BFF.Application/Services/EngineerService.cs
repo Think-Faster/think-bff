@@ -1,5 +1,7 @@
+using BFF.Application.Exceptions;
 using BFF.Context;
 using BFF.Contracts.Engineers;
+using BFF.Models.Constants;
 using BFF.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -33,11 +35,20 @@ public sealed class EngineerService : IEngineerService
     public async Task<EngineerProfileDto?> GetProfileAsync(Guid userId, CancellationToken ct)
     {
         var entity = await _context.EngineerProfiles.AsNoTracking().SingleOrDefaultAsync(p => p.UserId == userId, ct);
-        return entity is null ? null : ToDto(entity);
+        if (entity is null)
+        {
+            return null;
+        }
+
+        var telegram = await _context.Users.AsNoTracking()
+            .Where(u => u.Id == userId).Select(u => u.Telegram).SingleOrDefaultAsync(ct);
+        return ToDto(entity, telegram);
     }
 
     public async Task<EngineerProfileDto> UpsertProfileAsync(Guid userId, UpsertEngineerProfileRequest request, CancellationToken ct)
     {
+        var user = await _context.Users.SingleOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new NotFoundException($"User {userId} not found.");
         var entity = await _context.EngineerProfiles.SingleOrDefaultAsync(p => p.UserId == userId, ct);
 
         if (entity is null)
@@ -48,12 +59,17 @@ public sealed class EngineerService : IEngineerService
 
         entity.BrigadeId = request.BrigadeId;
         entity.Phone = request.Phone;
-        entity.Telegram = request.Telegram;
+        if (request.Telegram is not null)
+        {
+            user.Telegram = TelegramUsername.Normalize(request.Telegram);
+            user.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
         entity.Specialization = request.Specialization?.ToArray() ?? entity.Specialization;
         entity.Status = request.Status;
 
         await _context.SaveChangesAsync(ct);
-        return ToDto(entity);
+        return ToDto(entity, user.Telegram);
     }
 
     public async Task<IReadOnlyList<EngineerPermitDto>> ListPermitsAsync(Guid userId, CancellationToken ct)
@@ -110,12 +126,12 @@ public sealed class EngineerService : IEngineerService
         CheckedAt = p.CheckedAt,
     };
 
-    private static EngineerProfileDto ToDto(EngineerProfile p) => new()
+    private static EngineerProfileDto ToDto(EngineerProfile p, string? telegram) => new()
     {
         UserId = p.UserId,
         BrigadeId = p.BrigadeId,
         Phone = p.Phone,
-        Telegram = p.Telegram,
+        Telegram = telegram,
         Specialization = p.Specialization,
         Status = p.Status,
     };

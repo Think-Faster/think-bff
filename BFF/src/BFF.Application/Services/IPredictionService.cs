@@ -1,5 +1,6 @@
 using BFF.Contracts.Common;
 using BFF.Contracts.Predictions;
+using BFF.Models.Enums;
 
 namespace BFF.Application.Services;
 
@@ -16,7 +17,16 @@ public interface IPredictionService
     /// карточка (Created=true).</summary>
     Task<(PredictionDto Prediction, bool Created)> RecordForecastAsync(CreatePredictionRequest request, CancellationToken ct);
 
-    Task<PredictionDecisionDto> DecideAsync(Guid predictionId, Guid userId, CreatePredictionDecisionRequest request, CancellationToken ct);
+    /// <summary>Тревога модели кончилась (alarm=false в часе hourEnd, §9.8): у карточек пары с горящей тревогой
+    /// Alarm=false и AlarmEndedAt; без решения (New, InReview) — Expired. Возвращает, сколько карточек задело.</summary>
+    Task<int> EndAlarmsAsync(int objectId, IReadOnlyCollection<PredictionType> types, DateTimeOffset hourEnd, CancellationToken ct);
+
+    /// <summary>Сводка «Журнала прогнозов»: активные тревоги, ждущие решения, заведённые и кончившиеся за сутки.</summary>
+    Task<PredictionStatsDto> StatsAsync(CancellationToken ct);
+
+    /// <summary>canManage — у пользователя predictions:manage: без него Mute и Reopen заглушенного — 403.</summary>
+    Task<PredictionDecisionDto> DecideAsync(
+        Guid predictionId, Guid userId, CreatePredictionDecisionRequest request, bool canManage, CancellationToken ct);
 
     /// <summary>live=true — только живые эпизоды (FactAlertLiveness), false — только прошедшие.</summary>
     Task<PagedResult<FactAlertDto>> ListFactAlertsAsync(int? objectId, bool? live, int page, int pageSize, CancellationToken ct);

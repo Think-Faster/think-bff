@@ -28,4 +28,13 @@ public interface IUserService
     /// recipients) — one result per requested id, in any order, always present even for a missing
     /// user (Found=false).</summary>
     Task<IReadOnlyList<UserEmailDto>> ResolveEmailsAsync(IReadOnlyList<Guid> userIds, CancellationToken ct);
+
+    /// <summary>То же для Telegram: userId → имя в Telegram (users.telegram) — для POST /notifications/telegram.</summary>
+    Task<IReadOnlyList<UserTelegramDto>> ResolveTelegramsAsync(IReadOnlyList<Guid> userIds, CancellationToken ct);
+
+    /// <summary>Своё имя в Telegram — для профиля (GET /users/me/telegram).</summary>
+    Task<string?> GetTelegramAsync(Guid id, CancellationToken ct);
+
+    /// <summary>Сохраняет имя в Telegram (нормализованное, без @); null или пусто — убрать. Возвращает сохранённое.</summary>
+    Task<string?> SetTelegramAsync(Guid id, string? telegram, CancellationToken ct);
 }

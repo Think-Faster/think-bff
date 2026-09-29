@@ -22,9 +22,9 @@ flowchart LR
     tf-bff -->|SQL, bff_user/bff_admin| tf-postgres
     tf-bff -->|HTTP POST /refresh, GET /jwks| tf-auth
     tf-bff -->|HTTP, AppRole login| vault
-    tf-bff -->|Redis: XADD audit, SET NX EX email:ratelimit:*| tf-redis
+    tf-bff -->|Redis: XADD audit, SET NX EX email/telegram:ratelimit:*, GET tg:user:*, tg:bot| tf-redis
     tf-bff -->|AMQP publish tf.notifications email/telegram| tf-rabbit
-    tf-bff -->|AMQP publish tf.model.commands decision.*| tf-rabbit
+    tf-bff -->|AMQP publish tf.model.commands decision.*, model.switch, settings.*| tf-rabbit
     tf-bff -->|Kafka consume tf.forecast.results, group tf-bff-facts| tf-kafka
 
     tf-rabbit -->|AMQP consume tf.notifications email| tf-mail
@@ -69,11 +69,11 @@ sequenceDiagram
     M->>K: kind=fact, types.<type>.new=true
     F->>K: consume (group tf-bff-facts, latest)
     F->>D: INSERT fact_alerts (RecordFactAlertAsync)
-    F->>D: SELECT дежурные (schedule_entries JOIN users/engineer_profiles)
+    F->>D: SELECT дежурные (schedule_entries JOIN users)
     loop каждый email дежурного
         F->>R: publish email, routing key "email", свой notice_id
     end
-    F->>R: publish telegram (все chat_id одним сообщением), routing key "telegram"
+    F->>R: publish telegram (все имена дежурных одним сообщением, to.usernames), routing key "telegram"
     R->>Mail: consume
     F->>D: XADD audit ticket.created (Redis)
 ```
@@ -104,6 +104,7 @@ sequenceDiagram
 | DELETE | `/users/{id}?soft=` | `users:delete` | деактивировать/удалить |
 | POST | `/users/{id}/groups` | `users:update` | добавить в группы |
 | DELETE | `/users/{id}/groups/{groupId}` | `users:update` | исключить из группы |
+| GET/PUT | `/users/me/telegram` | любой вошедший | своё имя в Telegram и подключён ли бот |
 | GET | `/users/{id}/schedule` | `schedule:read` | график пользователя |
 | POST | `/users/{id}/schedule` | `schedule:update` | строка графика |
 | DELETE | `/users/{id}/schedule/{entryId}` | `schedule:update` | удалить строку |
@@ -170,7 +171,9 @@ sequenceDiagram
 | GET/POST | `/retrain-jobs` | `model_settings:read`/`manage` | заявки на дообучение |
 | GET/POST/DELETE | `/ignored-ranges[/{id}]` | `model_settings:read`/`manage` | игнорируемые диапазоны |
 | GET/POST/PUT/DELETE | `/work-schedule[/{workId}]` | `model_settings:read`/`manage` | плановые работы |
+| POST | `/model-commands/switch\|operating\|gaps` | `model_settings:manage` | команды модели `model.switch`, `settings.operating`, `settings.gaps` — `202`, при сбое брокера `503` |
 | POST | `/notifications/email` | `notifications:create` | рассылка писем, см. §4 |
+| POST | `/notifications/telegram` | `notifications:create` | сообщение от бота по `users.telegram`, см. §4 |
 
 Источник — атрибуты `[HttpGet]`/`[HttpPost]`/`[HttpPut]`/`[HttpDelete]` и `[RequirePermission]` во всех
 файлах `src/BFF.WebApi/Controllers/*.cs`.
@@ -183,9 +186,9 @@ sequenceDiagram
 | HTTP | `tf-auth`, `AUTH_REFRESH_PATH` | обновить access-token по истечении | `401 token_refresh_failed` пользователю |
 | HTTP | `tf-auth`, `AUTH_JWKS_URL` | публичный ключ для проверки подписи, кэш `AUTH_JWKS_CACHE_MINUTES` | `503 auth_service_unavailable`, `/health/ready` → `jwks: false` |
 | HTTP | Vault, `VAULT_ADDR` | AppRole-логин, чтение секретов при старте контейнера | контейнер не стартует (см. §7) |
-| Redis (StackExchange.Redis) | `tf-redis` | поток `audit` (журнал действий), ключи `email:ratelimit:*` (антиспам) | аудит уходит в лог сервиса вместо Redis; лимитер пропускает (fail-open) — `src/BFF.WebApi/Audit/AuditWriter.cs:70`, `src/BFF.WebApi/Notifications/EmailRateLimiter.cs` |
+| Redis (StackExchange.Redis) | `tf-redis` | поток `audit` (журнал действий), ключи `email:ratelimit:*`, `telegram:ratelimit:*` (антиспам), чтение `tg:user:*`, `tg:bot` (связи бота) | аудит уходит в лог сервиса вместо Redis; лимитер пропускает (fail-open); связи — «неизвестно», отправка без проверки — `src/BFF.WebApi/Audit/AuditWriter.cs:70`, `src/BFF.WebApi/Notifications/NotificationRateLimiter.cs`, `TelegramLinks.cs` |
 | AMQP (RabbitMQ.Client 7.2.2) | `tf-rabbit`, exchange `tf.notifications` | публикация email/telegram-уведомлений | `PublishException` → вызывающий код помечает получателя `failed`, автоповтора нет |
-| AMQP | `tf-rabbit`, exchange `tf.model.commands` | решения диспетчера обратно в модель | ошибка только в лог — решение уже в БД, диспетчеру не мешает |
+| AMQP | `tf-rabbit`, exchange `tf.model.commands` | решения диспетчера и команды админ-панели в модель | решения: ошибка только в лог — решение уже в БД; команды админ-панели: `503 model_commands_unavailable` |
 | Kafka (Confluent.Kafka) | `tf-kafka`, топик `tf.forecast.results`, группа `tf-bff-facts` | приём прогнозов/фактов от модели | без `TF_KAFKA_BFF_PASSWORD` консьюмер не стартует, остальной BFF работает; сбой обработки — 4 попытки, потом пропуск с логом |
 
 ## 4. Контракты данных
@@ -241,9 +244,11 @@ sequenceDiagram
 | `kind` | string? | нет | `"fact"` для событий модели, не задаётся у ручной рассылки |
 | `request_id` | string? | нет | `X-Request-ID`/`TraceIdentifier` запроса |
 
-`routing key "telegram"` — то же тело, `to.chat_ids` вместо `to.emails` (`long` или `"@канал"`), одно
-сообщение на все чаты дежурных разом (не по одному, в отличие от email). Источник —
-`src/BFF.WebApi/Notifications/NoticePublisher.cs`, `FactNotifier.cs:65-85`.
+`routing key "telegram"` — то же тело, `to.usernames` вместо `to.emails`: имена в Telegram без `@`
+(`users.telegram`), одно сообщение на всех получателей разом (не по одному, в отличие от email) — и у
+рассылки «по факту», и у `POST /notifications/telegram`. chat_id по имени tf-tg берёт из своих связей
+(человек нажал «Старт» у бота); `to.chat_ids` (`long` или `"@канал"`) BFF больше не шлёт. Источник —
+`src/BFF.WebApi/Notifications/NoticePublisher.cs`, `FactNotifier.cs`, `TelegramNotificationService.cs`.
 
 `notice_id` не связан с идемпотентностью на стороне BFF — обнаружение дублей и правило «в течение суток
 одному адресату второй раз не уйдёт» реализует `tf-mail` (**не проверено** — вне этого репозитория).
@@ -254,7 +259,7 @@ sequenceDiagram
 {
   "schema": 1,
   "command_id": "...",
-  "kind": "decision.take|decision.reject|decision.mute|decision.reopen|decision.confirmed",
+  "kind": "decision.take|decision.reject|decision.mute|decision.reopen|decision.confirmed|model.switch|settings.operating|settings.gaps",
   "issued_at": "...",
   "issued_by": { "sub": "...", "login": "..." },
   "request_id": "...",
@@ -264,7 +269,9 @@ sequenceDiagram
 
 `routing key` = `kind`. `command_id` = id решения диспетчера или id происшествия — повторная публикация
 с тем же `command_id` идемпотентна на стороне модели (**не проверено**, со слов ML/INTEGRATION.md §13.3).
-Источник — `src/BFF.WebApi/Notifications/ModelCommandPublisher.cs`, `ModelDecisionRelay.cs`.
+У команд админ-панели `command_id` — новый GUID на каждый запрос: снимки `settings.*` несут свой номер
+версии, и повтор устаревшего модель отбросит сама.
+Источник — `src/BFF.WebApi/Notifications/ModelCommandPublisher.cs`, `ModelDecisionRelay.cs`, `ModelSettingsRelay.cs`.
 
 ### `tf.forecast.results` (потребление, топик Kafka)
 
@@ -300,8 +307,12 @@ PostgreSQL, схема задаётся `DB_SCHEMA` через `Search Path` в 
 остальной сервис не страдает):
 - Stream `audit`, `XADD audit * event <json>`, максимум 1 000 000 записей (`MaxLength` в
   `AuditWriter.cs:34`) — читает `tf-audit` (**не проверено**, вне репозитория).
-- Ключи `email:ratelimit:{email}` (email в нижнем регистре), `SET NX EX 60` — антиспам-лимит для
-  `POST /notifications/email`; на рассылку «по факту» (`FactNotifier`) не действует.
+- Ключи `email:ratelimit:{email}` (email в нижнем регистре) и `telegram:ratelimit:{username}`,
+  `SET NX EX 60` — антиспам-лимит для `POST /notifications/email` и `/notifications/telegram`
+  (`NotificationRateLimiter`); на рассылку «по факту» (`FactNotifier`) не действует.
+- Только чтение ключей tf-tg: `tg:user:{username}` (есть — человек подключил бота) и `tg:bot` (имя
+  бота) — `TelegramLinks`, для `GET /users/me/telegram` и статуса `notLinked`. Пишет их только tf-tg
+  (think-infra `telegram/app/links.py`).
 
 **Kafka** — потребитель без сохранения оффсета вне брокера (`EnableAutoCommit: false`, коммит вручную
 после обработки — `FactResultsConsumer.cs:59,98`); первый запуск группы `tf-bff-facts` стартует с конца

@@ -13,14 +13,20 @@ namespace BFF.WebApi.Controllers;
 public sealed class NotificationsController : ControllerBase
 {
     private readonly EmailNotificationService _emailNotificationService;
+    private readonly TelegramNotificationService _telegramNotificationService;
     private readonly IValidator<SendEmailRequest> _sendEmailValidator;
+    private readonly IValidator<SendTelegramRequest> _sendTelegramValidator;
 
     public NotificationsController(
         EmailNotificationService emailNotificationService,
-        IValidator<SendEmailRequest> sendEmailValidator)
+        TelegramNotificationService telegramNotificationService,
+        IValidator<SendEmailRequest> sendEmailValidator,
+        IValidator<SendTelegramRequest> sendTelegramValidator)
     {
         _emailNotificationService = emailNotificationService;
+        _telegramNotificationService = telegramNotificationService;
         _sendEmailValidator = sendEmailValidator;
+        _sendTelegramValidator = sendTelegramValidator;
     }
 
     [HttpPost("email")]
@@ -32,6 +38,17 @@ public sealed class NotificationsController : ControllerBase
         // источник, что и у AuditMiddleware.
         var requestId = HttpContext.Request.Headers["X-Request-ID"].FirstOrDefault() ?? HttpContext.TraceIdentifier;
         var result = await _emailNotificationService.SendAsync(request, requestId, ct);
+        return Ok(result);
+    }
+
+    /// <summary>Сообщение от бота пользователям по их именам в Telegram — то же право, что у письма.</summary>
+    [HttpPost("telegram")]
+    [RequirePermission(ResourceCodes.Notifications, PermissionFlags.Create)]
+    public async Task<IActionResult> SendTelegram([FromBody] SendTelegramRequest request, CancellationToken ct)
+    {
+        await _sendTelegramValidator.ValidateAndThrowAsync(request, ct);
+        var requestId = HttpContext.Request.Headers["X-Request-ID"].FirstOrDefault() ?? HttpContext.TraceIdentifier;
+        var result = await _telegramNotificationService.SendAsync(request, requestId, ct);
         return Ok(result);
     }
 }

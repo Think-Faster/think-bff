@@ -3,6 +3,7 @@ using System;
 using BFF.Context;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace BFF.Context.Migrations
 {
     [DbContext(typeof(BffDbContext))]
-    partial class BffDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260928235000_AddUserTelegram")]
+    partial class AddUserTelegram
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -688,10 +691,6 @@ namespace BFF.Context.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("alarm");
 
-                    b.Property<DateTimeOffset?>("AlarmEndedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("alarm_ended_at");
-
                     b.Property<string>("Classification")
                         .HasColumnType("text")
                         .HasColumnName("classification");
@@ -847,11 +846,6 @@ namespace BFF.Context.Migrations
                         .HasColumnType("double precision")
                         .HasColumnName("value");
 
-                    b.Property<string>("ValueText")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("value_text");
-
                     b.HasKey("Id")
                         .HasName("pk_prediction_evidence");
 
@@ -876,11 +870,6 @@ namespace BFF.Context.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("feature");
-
-                    b.Property<string>("Label")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("label");
 
                     b.Property<Guid>("PredictionId")
                         .HasColumnType("uuid")

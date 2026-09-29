@@ -40,6 +40,8 @@ location `/api/bff/` проксирует на `tf-bff:8080/` **с обрезк�
 | DELETE | `/users/{id}?soft=true` | `users:delete` |
 | POST | `/users/{id}/groups` | `users:update` |
 | DELETE | `/users/{id}/groups/{groupId}` | `users:update` |
+| GET | `/users/me/telegram` | любой вошедший |
+| PUT | `/users/me/telegram` | любой вошедший |
 
 **GET `/users/{id}`** — данные пользователя плюс группы **первого уровня** (без учёта вложенности):
 
@@ -47,6 +49,7 @@ location `/api/bff/` проксирует на `tf-bff:8080/` **с обрезк�
 {
   "id": "...", "authUserId": "...",
   "lastName": "Иванов", "firstName": "Иван", "middleName": "Иванович", "email": "ivanov@example.com",
+  "telegram": "ivan_petrov",
   "isActive": true,
   "groups": [ { "id": "...", "code": "analysts", "name": "Аналитики" } ]
 }
@@ -55,11 +58,22 @@ location `/api/bff/` проксирует на `tf-bff:8080/` **с обрезк�
 `email` — необязательное поле (может быть `null`); нужно, чтобы на пользователя можно было отправить
 письмо через `POST /notifications/email` (см. выше) по `userId`, а не только по email напрямую.
 
-**POST `/users`** — тело `{ authUserId, lastName, firstName, middleName?, email?, groupIds?: [] }` →
-`201` + объект.
+`telegram` — необязательное имя в Telegram, хранится без `@` и в нижнем регистре (5–32 символа:
+латиница, цифры, `_`, начинается с буквы; на входе `@` можно). По нему бот шлёт уведомления —
+`POST /notifications/telegram` и рассылка «по факту», но только после того, как человек сам нажал
+«Старт» у бота: первым бот написать не может.
 
-**PUT `/users/{id}`** — тело `{ lastName, firstName, middleName?, email?, isActive }`. Состав групп не
-меняет.
+**POST `/users`** — тело `{ authUserId, lastName, firstName, middleName?, email?, telegram?, groupIds?: [] }`
+→ `201` + объект.
+
+**PUT `/users/{id}`** — тело `{ lastName, firstName, middleName?, email?, telegram?, isActive }`. Состав
+групп не меняет. `telegram`: `null` или нет поля — не менять, `""` — убрать.
+
+**GET/PUT `/users/me/telegram`** — своё имя в Telegram для профиля, без права на раздел пользователей.
+PUT — тело `{ "username": "@ivan_petrov" }` (`null`/`""` — убрать). Ответ обоих:
+`{ "username": "ivan_petrov" | null, "linked": true | false | null, "bot": "thinkfaster_bot" | null }`.
+`linked` — человек нажал «Старт» у бота под этим именем (связь хранит tf-tg в Redis), `null` —
+неизвестно (Redis недоступен). `bot` — имя бота для ссылки `https://t.me/<bot>`.
 
 **DELETE `/users/{id}`** — `?soft=true` (по умолчанию) деактивирует (`is_active = false`); `?soft=false`
 удаляет пользователя целиком вместе с его членствами в группах и его грантами.
@@ -126,7 +140,8 @@ system_group_protected`. Иначе удаляет группу, все её р�
 | POST | `/resources` | `permissions:manage` |
 
 **GET `/permissions/me`** — эффективные права текущего пользователя (личные + права всех групп, в
-которых он состоит, прямо или транзитивно):
+которых он состоит, прямо или транзитивно) и коды этих групп (`groups`: прямые и родительские —
+бригада внутри `engineers` даёт оба кода):
 
 ```json
 {
@@ -134,9 +149,13 @@ system_group_protected`. Иначе удаляет группу, все её р�
   "permissions": {
     "users": ["read"],
     "documents": ["create", "read", "update", "export"]
-  }
+  },
+  "groups": ["engineers", "brigade-1"]
 }
 ```
+
+Роли — это группы: раздел инженера фронт показывает по `engineers` (как `/tasks/assignees?role=engineers`),
+а не по праву — у admins есть все права, но инженерами они от этого не становятся.
 
 **GET `/permissions/check?resource=documents&permission=update`** — точечная проверка для UI (показать/
 скрыть элемент): `{ "allowed": true }`.
@@ -165,7 +184,7 @@ duplicate_code`.
 (TS-типы всех DTO + таблицы эндпоинтов `/objects`, `/sensors`, `/predictions`, `/fact-alerts`, `/tasks`,
 `/incidents`, `/users/{id}/schedule`, `/users/{id}/assigned-objects`, `/users/{id}/engineer-profile`,
 `/users/{id}/permits`, `/presence`, `/brigades`, `/model-versions`, `/coefficients`, `/retrain-jobs`,
-`/ignored-ranges`, `/work-schedule`, `/readings/scope`). Базовый
+`/ignored-ranges`, `/work-schedule`, `/model-commands/*`, `/readings/scope`). Базовый
 контур `users`/`groups`/`permissions` — в парном документе,
 [`FRONTEND_INTEGRATION_GROUPS_USERS_PERMISSIONS.md`](FRONTEND_INTEGRATION_GROUPS_USERS_PERMISSIONS.md).
 Не дублирую здесь — таблиц много, а формат идентичен разделам выше (путь / право / тело / ответ).
@@ -182,6 +201,13 @@ duplicate_code`.
 адрес в минуту через Redis; письмо реально отправляет отдельный сервис инфраструктуры (`tf-mail`) —
 доставка асинхронная, `200` значит «принято в обработку». Полное описание запроса/ответа и связанного
 нового поля `email` у `User` — [`FRONTEND_INTEGRATION_NOTIFICATIONS.md`](FRONTEND_INTEGRATION_NOTIFICATIONS.md).
+
+## Telegram — `POST /notifications/telegram`
+
+Право то же, `notifications:create`. Получатели — только `userIds`: сообщение уходит от бота по
+`users.telegram` одним сообщением `tf.notifications` (ключ `telegram`, `to.usernames`), tf-tg шлёт каждому
+личное. Лимит — одно сообщение на имя в минуту. Кто не подключил бота — `notLinked`, в очередь не
+ставится. Подробно — там же, в [`FRONTEND_INTEGRATION_NOTIFICATIONS.md`](FRONTEND_INTEGRATION_NOTIFICATIONS.md).
 
 ## Доступные значения `permission`
 

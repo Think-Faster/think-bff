@@ -14,9 +14,9 @@ namespace BFF.WebApi.Notifications;
 /// FactAlert и рассылает уведомление (FactNotifier); new=false — обновление того же эпизода, повторно не
 /// шлём. clock "replay" — демонстрационное время модели: по нему ни записей, ни уведомлений.
 ///
-/// Прогнозы (kind "forecast", §2.3): модель шлёт каждый объект каждый час, BFF берёт только типы с
-/// alarm=true и ведёт по ним карточку эпизода (IPredictionService.RecordForecastAsync) — её видит
-/// «Журнал прогнозов». Прогнозы в демонстрационном времени (clock "replay") берутся, только если
+/// Прогнозы (kind "forecast", §2.3): модель шлёт каждый объект каждый час по всем типам. Типы с
+/// alarm=true ведут карточку эпизода (IPredictionService.RecordForecastAsync) — её видит «Журнал
+/// прогнозов»; alarm=false кончает тревогу пары (EndAlarmsAsync, §9.8): карточка без решения — «истёк». Прогнозы в демонстрационном времени (clock "replay") берутся, только если
 /// TF_FORECAST_REPLAY=true: на стенде для показа, в проде — нет.
 ///
 /// Группа — tf-bff-facts (ACL think-infra: группы с префиксом tf-bff). Без пароля Kafka
@@ -134,12 +134,17 @@ public sealed class FactResultsConsumer : BackgroundService
     public async Task HandleAsync(string value, CancellationToken ct)
     {
         var acceptReplay = string.Equals(_configuration["TF_FORECAST_REPLAY"], "true", StringComparison.OrdinalIgnoreCase);
-        var forecasts = ParseForecasts(value, acceptReplay);
-        if (forecasts.Count > 0)
+        if (ParseForecastMessage(value, acceptReplay) is { } message)
         {
             using var scope = _scopes.CreateScope();
             var predictions = scope.ServiceProvider.GetRequiredService<IPredictionService>();
-            foreach (var forecast in forecasts)
+            var ended = await predictions.EndAlarmsAsync(message.ObjectId, message.Ended, message.HourEnd, ct);
+            if (ended > 0)
+            {
+                _logger.LogInformation("Forecast alarms ended: object {ObjectId}, {Count} card(s)", message.ObjectId, ended);
+            }
+
+            foreach (var forecast in message.Alarms)
             {
                 var (prediction, created) = await predictions.RecordForecastAsync(forecast, ct);
                 if (created)
@@ -323,9 +328,13 @@ public sealed class FactResultsConsumer : BackgroundService
     private static bool TryTime(JsonElement element, string name, out DateTimeOffset value) =>
         DateTimeOffset.TryParse(Text(element, name), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out value);
 
-    /// <summary>Тревоги из прогноза модели: по одной на тип с alarm=true. Факты, чужие часы и типы без
-    /// тревоги — пусто.</summary>
-    public static IReadOnlyList<CreatePredictionRequest> ParseForecasts(string value, bool acceptReplay = false)
+    /// <summary>Прогноз объекта за час: тревоги (alarm=true) и типы, у которых тревоги нет (alarm=false).</summary>
+    public sealed record ForecastMessage(
+        int ObjectId, DateTimeOffset HourEnd, IReadOnlyList<CreatePredictionRequest> Alarms, IReadOnlyList<PredictionType> Ended);
+
+    /// <summary>Прогноз модели: по карточке на тип с alarm=true и список типов с alarm=false. Факты, чужие
+    /// часы (replay без TF_FORECAST_REPLAY) и не-JSON — null.</summary>
+    public static ForecastMessage? ParseForecastMessage(string value, bool acceptReplay = false)
     {
         JsonDocument doc;
         try
@@ -334,7 +343,7 @@ public sealed class FactResultsConsumer : BackgroundService
         }
         catch (JsonException)
         {
-            return Array.Empty<CreatePredictionRequest>();
+            return null;
         }
 
         using (doc)
@@ -342,7 +351,7 @@ public sealed class FactResultsConsumer : BackgroundService
             var root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
             {
-                return Array.Empty<CreatePredictionRequest>();
+                return null;
             }
 
             var clock = Text(root, "clock") ?? "live";
@@ -352,19 +361,27 @@ public sealed class FactResultsConsumer : BackgroundService
                 || !TryTime(root, "hour_end", out var hourEnd)
                 || !root.TryGetProperty("types", out var types) || types.ValueKind != JsonValueKind.Object)
             {
-                return Array.Empty<CreatePredictionRequest>();
+                return null;
             }
 
             var horizon = root.TryGetProperty("horizon_hours", out var h) && h.TryGetInt16(out var hh) ? hh : (short)24;
             var modelVersion = Text(root, "model_version");
             var result = new List<CreatePredictionRequest>();
+            var ended = new List<PredictionType>();
             foreach (var entry in types.EnumerateObject())
             {
                 var block = entry.Value;
                 if (block.ValueKind != JsonValueKind.Object
-                    || !block.TryGetProperty("alarm", out var alarm) || alarm.ValueKind != JsonValueKind.True
+                    || !block.TryGetProperty("alarm", out var alarm)
+                    || alarm.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
                     || !PredictionTypeExtensions.TryParseModel(entry.Name, out var type))
                 {
+                    continue;
+                }
+
+                if (alarm.ValueKind == JsonValueKind.False)
+                {
+                    ended.Add(type);
                     continue;
                 }
 
@@ -383,97 +400,25 @@ public sealed class FactResultsConsumer : BackgroundService
                     Score = score,
                     Threshold = threshold,
                     Alarm = true,
-                    // Уверенность — калиброванная доля подтвердившихся тревог (§2.3); без калибровки — место
-                    // в распределении парка: не вероятность, но порядок карточек сохраняет.
-                    Probability = confidence ?? score,
+                    // Вероятность — калиброванная доля подтвердившихся тревог (§2.3). score — место часа в
+                    // распределении парка, не вероятность: без калибровки вероятность 0 и описание говорит об этом.
+                    Probability = confidence ?? 0,
                     Confidence = confidence ?? 0,
                     SinceHours = since,
-                    Topic = $"{label}: риск в ближайшие {horizon} ч",
-                    Description = Describe(score, threshold, since, block),
+                    Topic = $"{label}: риск в ближайшие {ForecastText.Hours(horizon)}",
+                    Description = ForecastText.Describe(score, threshold, confidence, since, block),
                     Classification = label,
-                    Recommendation = block.TryGetProperty("recommendation", out var rec) ? Recommendation(rec) : null,
+                    Recommendation = block.TryGetProperty("recommendation", out var rec)
+                        ? ForecastText.Recommendation(rec)
+                        : null,
                     ModelVersionId = modelVersion,
                     Factors = Reasons(block),
                     Evidence = Evidence(block),
                 });
             }
 
-            return result;
+            return new ForecastMessage(objectId, hourEnd, result, ended);
         }
-    }
-
-    private static string Describe(double score, double threshold, int since, JsonElement block)
-    {
-        var text = new StringBuilder(string.Create(CultureInfo.InvariantCulture,
-            $"Оценка модели {score:0.000} при пороге {threshold:0.000}"));
-        text.Append(since > 1 ? $"; тревога держится {since} ч." : "; тревога появилась в этот час.");
-        if (block.TryGetProperty("silent", out var silent) && silent.ValueKind == JsonValueKind.Array
-            && silent.GetArrayLength() > 0)
-        {
-            text.Append(" Молчат датчики: ")
-                .Append(string.Join(", ", silent.EnumerateArray().Select(x => x.ToString())))
-                .Append(" — оценка посчитана без них.");
-        }
-
-        return text.ToString();
-    }
-
-    /// <summary>Меры «сейчас» и выезд (§2.3, recommend.py) — текстом для карточки и описания заявки.</summary>
-    private static string? Recommendation(JsonElement rec)
-    {
-        if (rec.ValueKind != JsonValueKind.Object)
-        {
-            return null;
-        }
-
-        var lines = new List<string>();
-        if (rec.TryGetProperty("now", out var now) && now.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var step in now.EnumerateArray())
-            {
-                if (step.ValueKind != JsonValueKind.Object || Text(step, "мера") is not { Length: > 0 } measure)
-                {
-                    continue;
-                }
-
-                var line = new StringBuilder("• ").Append(measure);
-                if (Text(step, "исполнитель") is { } who)
-                {
-                    line.Append(" — ").Append(who);
-                }
-
-                if (Number(step, "срок_ч") is { } due)
-                {
-                    line.Append(string.Create(CultureInfo.InvariantCulture, $", срок {due:0} ч"));
-                }
-
-                lines.Add(line.ToString());
-            }
-        }
-
-        if (rec.TryGetProperty("visit", out var visit) && visit.ValueKind == JsonValueKind.Object
-            && Text(visit, "состав") is { } crew)
-        {
-            var line = new StringBuilder("Выезд: ").Append(crew);
-            if (Number(visit, "людей") is { } people and > 0)
-            {
-                line.Append(string.Create(CultureInfo.InvariantCulture, $", {people:0} чел."));
-            }
-
-            if (Number(visit, "срок_ч") is { } due)
-            {
-                line.Append(string.Create(CultureInfo.InvariantCulture, $", в течение {due:0} ч"));
-            }
-
-            if (visit.TryGetProperty("после_проверки", out var after) && after.ValueKind == JsonValueKind.True)
-            {
-                line.Append(" — если проверка без выезда не сняла тревогу");
-            }
-
-            lines.Add(line.ToString());
-        }
-
-        return lines.Count > 0 ? string.Join('\n', lines) : null;
     }
 
     private static IReadOnlyList<PredictionFactorDto> Reasons(JsonElement block)
@@ -485,7 +430,10 @@ public sealed class FactResultsConsumer : BackgroundService
 
         return reasons.EnumerateArray()
             .Where(r => r.ValueKind == JsonValueKind.Object && Text(r, "feature") is not null)
-            .Select(r => new PredictionFactorDto { Feature = Text(r, "feature")!, Value = Number(r, "value") ?? 0 })
+            .Select(r => new PredictionFactorDto
+            {
+                Feature = Text(r, "feature")!, Label = Text(r, "label"), Value = Number(r, "value") ?? 0,
+            })
             .ToArray();
     }
 
@@ -506,8 +454,14 @@ public sealed class FactResultsConsumer : BackgroundService
                 continue;
             }
 
-            // У дискретных каналов значение — текст («Обнаружен дым»): в карточке остаются датчик и время.
-            result.Add(new PredictionEvidenceDto { SensorId = sensorId, Ts = ts, Value = Number(e, "value") });
+            // У дискретных каналов значение — текст («Обнаружен дым»): его кладём в ValueText.
+            var number = e.TryGetProperty("value", out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : (double?)null;
+            var text = number is null ? Text(e, "value") : null;
+            result.Add(new PredictionEvidenceDto
+            {
+                SensorId = sensorId, Ts = ts, Value = number,
+                ValueText = text is { Length: > 100 } ? text[..100] : text,
+            });
         }
 
         return result;
