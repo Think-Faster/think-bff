@@ -71,7 +71,42 @@ public sealed class WorkTaskService : IWorkTaskService
         var reports = await _context.TaskReports.AsNoTracking().Where(r => r.TaskId == id).ToListAsync(ct);
         var returns = await _context.TaskReturns.AsNoTracking().Where(r => r.TaskId == id).ToListAsync(ct);
 
-        return ToDto(task, predictions, assignments, reports, returns);
+        return await WithPlaceAsync(ToDto(task, predictions, assignments, reports, returns), ct);
+    }
+
+    // Где работать: имена датчиков и коды пикетов из справочника (в заявке только номера).
+    private async Task<WorkTaskDto> WithPlaceAsync(WorkTaskDto dto, CancellationToken ct)
+    {
+        var ids = dto.SensorIds.Distinct().ToArray();
+        var sensors = ids.Length == 0
+            ? new Dictionary<int, (string Name, string SType, long? PicketId)>()
+            : await _context.Sensors.AsNoTracking().Where(s => ids.Contains(s.Id))
+                .Select(s => new { s.Id, s.Name, s.SType, s.PicketId })
+                .ToDictionaryAsync(s => s.Id, s => (s.Name, s.SType, s.PicketId), ct);
+        var picketIds = sensors.Values.Select(s => s.PicketId).Append(dto.PicketId).OfType<long>().Distinct().ToArray();
+        var pickets = picketIds.Length == 0
+            ? new Dictionary<long, string>()
+            : await _context.Pickets.AsNoTracking().Where(p => picketIds.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id, p => p.Code, ct);
+
+        return new WorkTaskDto
+        {
+            Id = dto.Id, Number = dto.Number, SourceType = dto.SourceType, ObjectId = dto.ObjectId,
+            PicketId = dto.PicketId, Topic = dto.Topic, Description = dto.Description, WorkType = dto.WorkType,
+            FaultClassification = dto.FaultClassification, SensorIds = dto.SensorIds, Comment = dto.Comment,
+            DispatcherId = dto.DispatcherId, Status = dto.Status, Priority = dto.Priority, CreatedAt = dto.CreatedAt,
+            TakenAt = dto.TakenAt, AssignedAt = dto.AssignedAt, CompletedAt = dto.CompletedAt, ClosedAt = dto.ClosedAt,
+            Predictions = dto.Predictions, Assignments = dto.Assignments, Reports = dto.Reports, Returns = dto.Returns,
+            PicketCode = dto.PicketId is { } own ? pickets.GetValueOrDefault(own) : null,
+            Sensors = ids.Select(id => sensors.TryGetValue(id, out var s)
+                    ? new TaskSensorDto
+                    {
+                        SensorId = id, Name = s.Name, SType = s.SType, PicketId = s.PicketId,
+                        PicketCode = s.PicketId is { } pid ? pickets.GetValueOrDefault(pid) : null,
+                    }
+                    : new TaskSensorDto { SensorId = id })
+                .ToArray(),
+        };
     }
 
     public async Task<WorkTaskDto> CreateAsync(CreateWorkTaskRequest request, CancellationToken ct)

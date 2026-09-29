@@ -370,6 +370,17 @@ interface WorkTaskDto {
   assignments: TaskAssignmentDto[];
   reports: TaskReportDto[];
   returns: TaskReturnDto[];
+  picketCode: string | null; // код пикета заявки из справочника
+  sensors: TaskSensorDto[];  // sensorIds из справочника: имя, тип, пикет
+}
+
+// Датчик заявки: как назвать и на каком пикете искать. Нет в справочнике — только sensorId.
+interface TaskSensorDto {
+  sensorId: number;
+  name: string | null;
+  sType: string | null;
+  picketId: number | null;
+  picketCode: string | null;
 }
 
 interface CreateWorkTaskRequest {
