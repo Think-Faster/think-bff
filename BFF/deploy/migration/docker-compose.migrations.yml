@@ -6,15 +6,30 @@ services:
     image: bff-migrations:latest
     env_file:
       - .env
+    environment:
+      # См. docs/VAULT_MIGRATION.md — та же схема, что у tf-bff, но под bff_admin (DDL-права).
+      VAULT_ADDR: http://vault:8200
+      VAULT_ROLE_ID: ${VAULT_ROLE_ID:?VAULT_ROLE_ID is not set}
+      VAULT_SECRET_ID: ${VAULT_SECRET_ID:?VAULT_SECRET_ID is not set}
+      VAULT_SECRET_PATHS: postgres/bff
+      VAULT_EXPAND: DB_MIGRATION_PASSWORD
+      DB_MIGRATION_PASSWORD: "$${TF_PG_BFF_ADMIN_PASSWORD}"
+
+      # Схему/базу/роли заводит инфраструктура, bff_admin — только владелец схемы bff (создаёт/меняет
+      # таблицы внутри неё), CREATE на самой базе у него нет и не будет (архитектурное решение
+      # инфраструктуры, не текущее состояние конкретного стенда) — так что это не настройка, а
+      # инвариант: зашито здесь, а не в .env, чтобы не зависеть от того, что там прописано на сервере.
+      # entrypoint.sh делает CREATE SCHEMA IF NOT EXISTS перед этой проверкой — а Postgres проверяет
+      # право на выполнение самой команды раньше проверки "уже существует или нет", так что даже
+      # IF NOT EXISTS падает permission denied без этого флага.
+      DB_SKIP_SCHEMA_CREATE: "true"
     networks:
-      - app-network
-      - postgree_app-network
+      - think-fast-net
     restart: "no"
     profiles: ["migrations"]
 
 networks:
-  app-network:
-    external: true
-    name: ${DOCKER_NETWORK:-app-network}
-  postgree_app-network:
+  # См. тот же комментарий в deploy/docker-compose.yml — единая сеть, postgree_app-network больше не
+  # существует, Postgres теперь тоже в think-fast-net.
+  think-fast-net:
     external: true

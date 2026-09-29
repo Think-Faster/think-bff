@@ -1,6 +1,7 @@
 using System.Text.Json;
 using BFF.Application.Exceptions;
 using BFF.Contracts.Common;
+using BFF.WebApi.Extensions;
 using FluentValidation;
 
 namespace BFF.WebApi.Middleware;
@@ -68,6 +69,6 @@ public sealed class ExceptionHandlingMiddleware
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json";
         var body = new ErrorResponse { Code = code, Message = message, Details = details };
-        await context.Response.WriteAsync(JsonSerializer.Serialize(body));
+        await context.Response.WriteAsync(JsonSerializer.Serialize(body, JsonDefaults.CamelCase));
     }
 }

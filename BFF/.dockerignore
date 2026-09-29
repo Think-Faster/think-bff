@@ -7,7 +7,6 @@
 deploy/.env
 deploy/migration/.env
 docs/
-scripts/
 README.md
 .git/
 .gitignore

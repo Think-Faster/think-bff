@@ -3,6 +3,7 @@ using BFF.Context;
 using BFF.Contracts.Common;
 using BFF.Contracts.Groups;
 using BFF.Contracts.Users;
+using BFF.Models.Constants;
 using BFF.Models.Entities;
 using BFF.Models.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -62,6 +63,8 @@ public sealed class UserService : IUserService
             LastName = request.LastName,
             FirstName = request.FirstName,
             MiddleName = request.MiddleName,
+            Email = request.Email,
+            Telegram = TelegramUsername.Normalize(request.Telegram),
             IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
@@ -89,6 +92,12 @@ public sealed class UserService : IUserService
         user.LastName = request.LastName;
         user.FirstName = request.FirstName;
         user.MiddleName = request.MiddleName;
+        user.Email = request.Email;
+        // null — не менять (старый клиент поля не шлёт), пустая строка — убрать.
+        if (request.Telegram is not null)
+        {
+            user.Telegram = TelegramUsername.Normalize(request.Telegram);
+        }
         user.IsActive = request.IsActive;
         user.UpdatedAt = DateTimeOffset.UtcNow;
 
@@ -222,6 +231,56 @@ public sealed class UserService : IUserService
     private static string FormatFullName(User u) =>
         string.Join(' ', new[] { u.LastName, u.FirstName, u.MiddleName }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
+    public async Task<IReadOnlyList<UserEmailDto>> ResolveEmailsAsync(IReadOnlyList<Guid> userIds, CancellationToken ct)
+    {
+        var distinctIds = userIds.Distinct().ToList();
+
+        var found = await _context.Users.AsNoTracking()
+            .Where(u => distinctIds.Contains(u.Id))
+            .Select(u => new UserEmailDto { UserId = u.Id, Found = true, Email = u.Email })
+            .ToListAsync(ct);
+
+        var foundIds = found.Select(f => f.UserId).ToHashSet();
+        var missing = distinctIds.Except(foundIds)
+            .Select(id => new UserEmailDto { UserId = id, Found = false, Email = null });
+
+        return found.Concat(missing).ToList();
+    }
+
+    public async Task<IReadOnlyList<UserTelegramDto>> ResolveTelegramsAsync(IReadOnlyList<Guid> userIds, CancellationToken ct)
+    {
+        var distinctIds = userIds.Distinct().ToList();
+
+        var found = await _context.Users.AsNoTracking()
+            .Where(u => distinctIds.Contains(u.Id))
+            .Select(u => new UserTelegramDto { UserId = u.Id, Found = true, Telegram = u.Telegram })
+            .ToListAsync(ct);
+
+        var foundIds = found.Select(f => f.UserId).ToHashSet();
+        var missing = distinctIds.Except(foundIds)
+            .Select(id => new UserTelegramDto { UserId = id, Found = false, Telegram = null });
+
+        return found.Concat(missing).ToList();
+    }
+
+    public async Task<string?> GetTelegramAsync(Guid id, CancellationToken ct)
+    {
+        var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == id, ct)
+            ?? throw new NotFoundException($"User {id} not found.");
+        return user.Telegram;
+    }
+
+    public async Task<string?> SetTelegramAsync(Guid id, string? telegram, CancellationToken ct)
+    {
+        var user = await _context.Users.SingleOrDefaultAsync(u => u.Id == id, ct)
+            ?? throw new NotFoundException($"User {id} not found.");
+
+        user.Telegram = TelegramUsername.Normalize(telegram);
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+        await _context.SaveChangesAsync(ct);
+        return user.Telegram;
+    }
+
     private static UserListItemDto ToListItemDto(User u) => new()
     {
         Id = u.Id,
@@ -229,6 +288,8 @@ public sealed class UserService : IUserService
         LastName = u.LastName,
         FirstName = u.FirstName,
         MiddleName = u.MiddleName,
+        Email = u.Email,
+        Telegram = u.Telegram,
         IsActive = u.IsActive,
     };
 
@@ -239,6 +300,8 @@ public sealed class UserService : IUserService
         LastName = u.LastName,
         FirstName = u.FirstName,
         MiddleName = u.MiddleName,
+        Email = u.Email,
+        Telegram = u.Telegram,
         IsActive = u.IsActive,
         Groups = groups,
     };
